@@ -1,0 +1,35 @@
+{
+  "name": "ZCBOT 官方插件源",
+  "description": "ZCBOT 官方插件市场索引（由 zgric_onebot11_plugins 仓库维护）",
+  "homepage": "https://github.com/kuangxing6367/zcbot_plugins",
+  "plugins": [
+    {
+      "name": "help",
+      "version": "1.0.0",
+      "author": "tinker",
+      "description": "查询所有已注册命令，生成图片帮助菜单",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/help",
+      "dependencies": ["Pillow>=10.0.0", "numpy>=1.24.0"]
+    },
+    {
+      "name": "echo",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "原样返回用户文本消息，无参数时返回 PONG",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/echo"
+    },
+    {
+      "name": "runtime_status",
+      "version": "1.1.0",
+      "author": "ZGRIC",
+      "description": "框架运行状态监控，提供 /status /info /help /uptime /plugins 命令",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/runtime_status"
+    }
+  ]
+}
