@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# 插件隔离环境
+.venv/
+
+# 临时文件
+*.tmp
+.DS_Store
+Thumbs.db
