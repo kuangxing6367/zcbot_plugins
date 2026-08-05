@@ -30,6 +30,16 @@
       "repo": "kuangxing6367/zcbot_plugins",
       "branch": "main",
       "sub_path": "plugins/runtime_status"
+    },
+    {
+      "name": "llm_plugin_gen",
+      "version": "1.2.0",
+      "author": "ZGRIC",
+      "description": "通过 OpenAI 兼容接口让 LLM 编写插件并管理插件文件（支持人格/skills/函数调用）",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/llm_plugin_gen",
+      "dependencies": ["requests>=2.28.0", "pyyaml>=6.0"]
     }
   ]
 }
