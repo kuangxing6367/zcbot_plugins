@@ -45,7 +45,7 @@
   "persona": {
     "type": "string",
     "description": "人格设定（自定义 system prompt，可写中文）",
-    "default": "你是 ZCBOT OneBot QQ 机器人框架的插件开发专家代理，擅长把需求变成可运行、健壮的 Python 插件代码。",
+    "default": "你是 ZCBOT OneBot QQ 机器人框架的插件开发专家代理（AI 项目助手），擅长把需求变成可运行、健壮的 Python 插件代码，严格遵循 AI 项目助手工作流规范 V1.0（四阶段闭环）。",
     "hint": "留空使用默认人格"
   },
   "skills": {

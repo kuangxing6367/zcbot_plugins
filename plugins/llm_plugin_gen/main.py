@@ -9,11 +9,18 @@ LLM 开发助手插件
   3. /ai #编号 <需求>      — 指定会话发起请求
   4. /ai #编号 N           — 回复 AI 提问，选择第 N 个选项
   5. /ai #编号 say <文字>  — 回复 AI 提问，自由补充说明
-  6. /ai list              — 列出所有会话
-  7. /ai set #编号         — 进入指定会话
-  8. /ai del [#编号]       — 删除会话（默认当前）
-  9. /ai stop              — 暂停当前正在运行的会话
-  10. /pluginlist          — 查看已加载插件
+  6. /ai continue 修改需求：xxx — 中途纠错（基于当前进度修改后续步骤）
+  7. /ai list              — 列出所有会话
+  8. /ai set #编号         — 进入指定会话
+  9. /ai del [#编号]       — 删除会话（默认当前）
+  10. /ai stop             — 暂停当前正在运行的会话（也可 /ai #编号 stop）
+  11. /pluginlist          — 查看已加载插件
+
+工作流（AI 项目助手规范 V1.0，四阶段闭环）：
+- 阶段一 启动：后台深度思考，只提 1~3 个口语化疑点（ask_user 提交）
+- 阶段二 规划：拆解为恰好 6 项待办清单（每项 ≤10 字），用户确认后才动工
+- 阶段三 执行：逐项完成并广播进度（✅ 已完成：【N. 名称】）
+- 阶段四 干预：/ai stop 制动；/ai continue 修改需求：xxx 纠错；完成后可在原会话指出错误要求修正
 
 会话机制：
 - 每个会话分配两位编号（#00~#99），编号用尽（00~99 全占用）时自动抛弃最旧会话
@@ -39,27 +46,48 @@ import httpx
 
 __plugin_meta__ = {
     "name": "LLM 开发助手",
-    "version": "1.5.0",
+    "version": "1.6.0",
     "author": "ZGRIC",
-    "desc": "对话式 LLM 插件开发（批准门控 + 会话编号，Claude Code 风格工作流）",
+    "desc": "对话式 LLM 插件开发（AI 项目助手工作流 V1.0：澄清疑点→6 项待办确认→逐项广播→stop/continue 干预，全异步）",
     "priority": 100,
 }
 
 # 默认人格
-_DEFAULT_PERSONA = "你是 ZCBOT OneBot QQ 机器人框架的插件开发专家代理，擅长把需求变成可运行、健壮的 Python 插件代码。"
+_DEFAULT_PERSONA = "你是 ZCBOT OneBot QQ 机器人框架的插件开发专家代理（AI 项目助手），擅长把需求变成可运行、健壮的 Python 插件代码，严格遵循 AI 项目助手工作流规范 V1.0（四阶段闭环）。"
 
-# 工作流提示（借鉴 Claude Code / opencode 的 agent 行为规范）
+# 工作流提示（AI 项目助手工作流规范 V1.0：四阶段闭环）
 _AGENT_WORKFLOW = """\
-## 工作流程（每个新需求必须遵守）
-1. **理解**：复述你对需求的理解，判断可行性（框架能力、依赖、工作量）
-2. **规划**：列出要创建/修改的文件与步骤
-3. **确认**：用 ask_user 工具向用户提交你的理解与计划，可附 2~4 个选项，等用户批准后再动手
-4. **执行**：用工具逐项实施（ls/read 探查 → write/edit 编写 → read 复查）
-5. **验证**：写完必须调用 load_plugin 加载；失败则 read/edit/reload_plugin 修复直到成功
-6. **汇报**：完成后按固定格式总结
+## 工作流规范（V1.0）：四阶段闭环
 
-## 开始与结束（重要）
-- **每个新需求必须先 ask_user 确认，用户批准后才允许修改文件**（write/edit/rm/append/rename/加载插件都不允许先于确认）
+### 阶段一 · 启动：需求确认与疑点澄清
+- 收到 /ai <需求> 后，先在后台深度思考，但**绝不输出思考过程和推导步骤**
+- 只针对需求中不确定的地方，用简单、口语化的方式一次性提出 1~3 个疑点（无疑点则跳过，直接进入规划）
+- 示例：需求"写个插件" → ask_user 提问："收到！这个插件是要在 WebUI 展示，还是纯 QQ 指令就行呀？"
+- 所有提问/确认一律通过 ask_user 提交；**不要先输出文本再调用 ask_user**，避免重复播报
+
+### 阶段二 · 规划：6 项待办清单
+- 需求确认后，把大任务拆解为**恰好 6 个待办事项**（6 步闭环；极简需求可少于 6 项但须说明原因）
+- 每个待办项的中文描述**不超过 10 个字**，极简、一目了然
+- 通过 ask_user 提交清单，格式如下：
+  任务已拆解，请确认以下待办事项：
+  > 1. [ ] 确定接口方案
+  > 2. [ ] 编写插件主逻辑
+  > 3. [ ] 设计配置结构
+  > 4. [ ] 开发 WebUI 页面
+  > 5. [ ] 加载与自测
+  > 6. [ ] 输出最终代码
+- **中断机制：用户确认后你才开始正式动工**（确认前禁止 write/edit/rm/append/rename/加载插件）
+
+### 阶段三 · 执行：单步完成广播
+- 按顺序逐个完成待办项；**每完成 1 个待办项，立即用普通文本广播进度**（不要用 ask_user）：
+  ✅ 已完成：【2. 编写插件主逻辑】
+
+### 阶段四 · 干预：紧急制动与纠正
+- 停止：用户随时发 /ai stop 或 /ai #编号 stop 终止当前会话，收到后立即停下并汇报已完成步骤
+- 非破坏性纠错：用户发 /ai continue 修改需求：xxxx，基于当前进度修改后续步骤，不要推翻已完成内容
+- 后置修改：全部步骤完成并输出结果后，用户仍可在原会话中指出错误 → 重新修正并更新结果
+
+## 通用规则
 - 用户回复方式：`/ai #编号 序号`（选择选项）或 `/ai #编号 say 补充内容`
 - 函数调用不限制轮数；每个执行节点都要用普通文本向用户说明进度
 - 动手前说明可能的原因与风险；失败时说明失败原因与修复思路
@@ -310,10 +338,11 @@ _USAGE_TEXT = """\
 /ai #编号 <需求>        指定会话发起请求
 /ai #编号 1~4           回复 AI 提问（选择选项）
 /ai #编号 say 补充      回复 AI 提问（自由补充说明）
+/ai continue 修改需求：xxx  中途纠错（基于当前进度修改后续步骤）
 /ai list                列出所有会话
 /ai set #编号           进入指定会话
 /ai del [#编号]         删除会话（默认删除当前）
-/ai stop                暂停当前正在运行的会话
+/ai stop                暂停当前正在运行的会话（也可 /ai #编号 stop）
 /pluginlist             查看已加载插件
 """
 
@@ -435,15 +464,18 @@ async def _init_db(ctx) -> None:
             "total_tokens INT DEFAULT 0, "
             "created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
         )
-        await ctx.db_execute_async(
-            "CREATE INDEX IF NOT EXISTS idx_llm_dev_conv_user ON llm_dev_conversations(user_id, id)"
-        )
-        await ctx.db_execute_async(
-            "CREATE INDEX IF NOT EXISTS idx_llm_dev_msg_user ON llm_dev_messages(user_id, code, id)"
-        )
-        await ctx.db_execute_async(
-            "CREATE INDEX IF NOT EXISTS idx_llm_dev_usage_user ON llm_dev_usage(user_id, id)"
-        )
+        # 索引（MySQL 方言；SQLite 模式由框架自动翻译）。
+        # 注意：MySQL 不支持 CREATE INDEX IF NOT EXISTS，重复创建会报错，
+        # 因此逐个 try 忽略"已存在"错误，保证 register 重复执行时幂等。
+        for _idx_sql in (
+            "CREATE INDEX idx_llm_dev_conv_user ON llm_dev_conversations(user_id, id)",
+            "CREATE INDEX idx_llm_dev_msg_user ON llm_dev_messages(user_id, code, id)",
+            "CREATE INDEX idx_llm_dev_usage_user ON llm_dev_usage(user_id, id)",
+        ):
+            try:
+                await ctx.db_execute_async(_idx_sql)
+            except Exception:
+                pass  # 索引已存在，忽略
     except Exception as e:
         ctx.log(f"初始化数据库表失败: {e}", level="error")
 
@@ -1174,12 +1206,14 @@ async def _cmd_del(ctx, event, code=None):
     await _send(ctx, event, f"🗑 会话 #{code} 已删除。")
 
 
-async def _cmd_stop(ctx, event):
+async def _cmd_stop(ctx, event, code=None):
+    """暂停指定会话（默认当前会话）"""
     user_id = str(event.user_id)
-    code = await _get_current_code(ctx, user_id)
     if not code:
-        await _send(ctx, event, "当前没有会话。")
-        return
+        code = await _get_current_code(ctx, user_id)
+        if not code:
+            await _send(ctx, event, "当前没有会话。")
+            return
     key = (user_id, code)
     task = _active_tasks.get(key)
     if task and not task.done():
@@ -1187,6 +1221,30 @@ async def _cmd_stop(ctx, event):
         await _send(ctx, event, f"⏹ 已请求暂停会话 #{code}，AI 正在停止当前操作...")
     else:
         await _send(ctx, event, f"会话 #{code} 当前没有正在运行的任务。")
+
+
+async def _cmd_continue(ctx, event, text):
+    """非破坏性纠错：/ai continue 修改需求：xxxx → 基于当前进度修改后续步骤"""
+    user_id = str(event.user_id)
+    code = await _get_current_code(ctx, user_id)
+    if not code:
+        await _send(ctx, event, "当前没有会话，请先用 /ai new 创建，或直接 /ai <需求> 开始。")
+        return
+    key = (user_id, code)
+    # 停止正在运行的任务，避免新旧任务并发
+    task = _active_tasks.get(key)
+    if task and not task.done():
+        task.cancel()
+    # 若正等待用户确认（有未完成上下文），取出并注入修改指令后继续
+    info = _pending_ask.pop(key, None)
+    if info:
+        await _append_session(ctx, user_id, code, "user", f"（用户中途修改需求）{text}")
+        msgs = list(info["msgs"])
+        msgs.append({"role": "user", "content": f"（用户中途修改需求）{text}"})
+        await _send(ctx, event, f"🔄 已收到修改需求，AI 将基于会话 #{code} 当前进度调整后续步骤...")
+        await _start_ai_ctx(ctx, event, code, msgs)
+    else:
+        await _start_ai(ctx, event, code, f"（用户中途修改需求）{text}")
 
 
 # ---- 对话主流程 ----
@@ -1211,8 +1269,11 @@ async def _start_ai(ctx, event, code, prompt):
     await _send(ctx, event, f"🤖 会话 #{code} 已收到指令，AI 正在处理（每个节点会实时汇报进度）...\n{_truncate(prompt, 200)}")
     task = asyncio.create_task(_run_ai(ctx, event, code, prompt))
     _active_tasks[(user_id, code)] = task
-    # 防止 task 异常被静默吞掉
-    task.add_done_callback(lambda t: _active_tasks.pop((user_id, code), None) if t.done() else None)
+    # 清理回调：仅当表中仍是本任务时才移除，避免旧任务取消时误删新任务
+    task.add_done_callback(
+        lambda t: _active_tasks.pop((user_id, code), None)
+        if _active_tasks.get((user_id, code)) is t else None
+    )
 
 
 async def _run_ai(ctx, event, code, prompt, resumed_msgs=None):
@@ -1242,8 +1303,8 @@ async def _run_ai(ctx, event, code, prompt, resumed_msgs=None):
                 f"{_loaded_plugins_text(ctx)}\n\n"
                 f"用户指令：{prompt}\n\n"
                 "（提示：写新插件前先 ls plugins/llm_plugin_gen/docs/INDEX.md 读文档索引，"
-                "再按需 ls 具体文档；每个新需求必须先 ask_user 确认，用户批准后才允许修改文件；"
-                "简单需求直接做，不要过度思考）"
+                "再按需 ls 具体文档；遵循四阶段工作流：先澄清疑点 → 拆解 6 项待办并经用户确认 → "
+                "逐项执行并广播进度；确认前禁止修改文件；简单需求直接做，不要过度思考）"
             )
             msgs.append({"role": "user", "content": user_content})
 
@@ -1284,7 +1345,9 @@ async def _run_ai(ctx, event, code, prompt, resumed_msgs=None):
         await _set_status(ctx, user_id, code, "idle")
         await _send(ctx, event, f"❌ 会话 #{code} 处理失败: {_truncate(str(e), 500)}")
     finally:
-        _active_tasks.pop(key, None)
+        # 仅当登记的任务仍是本任务时才移除，避免旧任务（如被 /ai continue 取消）误删新任务
+        if _active_tasks.get(key) is asyncio.current_task():
+            _active_tasks.pop(key, None)
 
 
 async def _reply_option(ctx, event, code, num):
@@ -1312,7 +1375,10 @@ async def _start_ai_ctx(ctx, event, code, msgs):
         return
     task = asyncio.create_task(_run_ai(ctx, event, code, None, resumed_msgs=msgs))
     _active_tasks[(user_id, code)] = task
-    task.add_done_callback(lambda t: _active_tasks.pop((user_id, code), None) if t.done() else None)
+    task.add_done_callback(
+        lambda t: _active_tasks.pop((user_id, code), None)
+        if _active_tasks.get((user_id, code)) is t else None
+    )
 
 
 async def _reply_say(ctx, event, code, text):
@@ -1378,6 +1444,13 @@ async def handle_ai(event, match):
     if low == "stop":
         await _cmd_stop(ctx, event)
         return
+    if low == "continue" or low.startswith("continue "):
+        text = low[len("continue"):].strip()
+        if not text:
+            await _send(ctx, event, "用法: /ai continue 修改需求：<新需求>")
+            return
+        await _cmd_continue(ctx, event, text)
+        return
     if prompt in ("重置", "清空", "新会话", "重来"):
         await _cmd_del(ctx, event, None)
         return
@@ -1389,6 +1462,9 @@ async def handle_ai(event, match):
         rest = (m.group(2) or "").strip()
         if not rest:
             await _show_conversation(ctx, event, code)
+            return
+        if rest.lower() == "stop":
+            await _cmd_stop(ctx, event, code)
             return
         if re.fullmatch(r'[1-4]', rest):
             await _reply_option(ctx, event, code, int(rest))
