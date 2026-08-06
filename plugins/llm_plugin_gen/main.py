@@ -4,11 +4,21 @@ LLM 开发助手插件
 通过 OpenAI 兼容接口让 LLM 编写插件、管理插件文件，支持自定义人格与 skills。
 
 核心能力：
-  1. /ai <指令>      — 自然对话，LLM 通过函数调用（ls/write/edit/rm/load_plugin 等）写插件并加载
-  2. /pluginlist     — 查看已加载插件
+  1. /ai new [标题]        — 创建新会话（自动分配两位编号 #00~#99，自动进入）
+  2. /ai <需求>            — 当前会话发起请求（无会话则自动创建）
+  3. /ai #编号 <需求>      — 指定会话发起请求
+  4. /ai #编号 N           — 回复 AI 提问，选择第 N 个选项
+  5. /ai #编号 say <文字>  — 回复 AI 提问，自由补充说明
+  6. /ai list              — 列出所有会话
+  7. /ai set #编号         — 进入指定会话
+  8. /ai del [#编号]       — 删除会话（默认当前）
+  9. /ai stop              — 暂停当前正在运行的会话
+  10. /pluginlist          — 查看已加载插件
 
-本插件为全异步实现（async handler + httpx 异步 HTTP），不占用框架线程池，
-避免同步阻塞导致机器人假死。
+会话机制：
+- 每个会话分配两位编号（#00~#99），编号用尽（00~99 全占用）时自动抛弃最旧会话
+- 每轮请求 AI 必须先解释理解与计划，用 ask_user 提交，用户批准后才继续修改文件
+- 上下文超限自动压缩（旧消息 LLM 摘要 + 保留最近消息），函数调用不限制轮数
 
 配置项（_conf_schema.json，Web UI 可改）：
   base_url / api_key / model / temperature / max_tokens
@@ -19,6 +29,7 @@ LLM 开发助手插件
 """
 import ast
 import asyncio
+import fnmatch
 import json
 import os
 import re
@@ -28,27 +39,58 @@ import httpx
 
 __plugin_meta__ = {
     "name": "LLM 开发助手",
-    "version": "1.4.1",
+    "version": "1.5.0",
     "author": "ZGRIC",
-    "desc": "通过 OpenAI 兼容接口让 LLM 编写插件并管理插件文件（支持人格/skills/函数调用）",
+    "desc": "对话式 LLM 插件开发（批准门控 + 会话编号，Claude Code 风格工作流）",
     "priority": 100,
 }
 
 # 默认人格
-_DEFAULT_PERSONA = "你是 ZCBOT OneBot QQ 机器人框架的插件开发专家，擅长编写高质量、健壮的 Python 插件。"
+_DEFAULT_PERSONA = "你是 ZCBOT OneBot QQ 机器人框架的插件开发专家代理，擅长把需求变成可运行、健壮的 Python 插件代码。"
 
-# 插件开发提示（精简；完整文档索引在 docs/INDEX.md，需要时用 ls 读取）
+# 工作流提示（借鉴 Claude Code / opencode 的 agent 行为规范）
+_AGENT_WORKFLOW = """\
+## 工作流程（每个新需求必须遵守）
+1. **理解**：复述你对需求的理解，判断可行性（框架能力、依赖、工作量）
+2. **规划**：列出要创建/修改的文件与步骤
+3. **确认**：用 ask_user 工具向用户提交你的理解与计划，可附 2~4 个选项，等用户批准后再动手
+4. **执行**：用工具逐项实施（ls/read 探查 → write/edit 编写 → read 复查）
+5. **验证**：写完必须调用 load_plugin 加载；失败则 read/edit/reload_plugin 修复直到成功
+6. **汇报**：完成后按固定格式总结
+
+## 开始与结束（重要）
+- **每个新需求必须先 ask_user 确认，用户批准后才允许修改文件**（write/edit/rm/append/rename/加载插件都不允许先于确认）
+- 用户回复方式：`/ai #编号 序号`（选择选项）或 `/ai #编号 say 补充内容`
+- 函数调用不限制轮数；每个执行节点都要用普通文本向用户说明进度
+- 动手前说明可能的原因与风险；失败时说明失败原因与修复思路
+- 简单直接的需求不要过度思考、不要长篇分析，尽快执行
+- 任务完成总结格式：
+  ✅ 完成：<做了什么>
+  📁 文件：<涉及的路径列表>
+  🔍 验证：<load_plugin 结果等>
+- 过程中如需要用户决策（路径、风格、功能取舍），随时 ask_user
+
+## 工具使用规范
+- 先探查再动手：动手前至少 ls 一次相关目录，读文档索引与现有代码
+- 小步修改：新文件用 write；改已有文件用 edit 精确替换，不要整文件重写
+- 文件写完用 read 复查关键片段
+- 不确定路径/内容时用 search 确认，不要臆测
+- 删除/移动前先 ls 确认目标
+"""
+
+# 插件开发提示（精简；完整文档索引在 docs/INDEX.md，需要时用 ls/read 读取）
 _PLUGIN_DEV_GUIDE = """\
 ## 插件开发提示
-- 完整开发文档索引：`plugins/llm_plugin_gen/docs/INDEX.md`，编写插件前先 ls 读取索引，再按需 ls 对应文档
-- 写完代码后务必调用 load_plugin 加载；失败则 ls/edit/reload_plugin 修复
+- 完整开发文档索引：`plugins/llm_plugin_gen/docs/INDEX.md`，编写插件前先读索引，再按需 ls/read 对应文档（省 token）
+- 写完代码后务必调用 load_plugin 加载；失败则 read/edit/reload_plugin 修复
 """
 
 # 默认 skills（可从配置覆盖）
 _DEFAULT_SKILLS = [
     "生成插件：根据用户需求生成符合框架规范的插件代码",
     "修改插件：阅读现有插件代码后修复 Bug / 增加功能",
-    "文件操作：使用 ls/write/edit/rm 管理插件目录文件",
+    "文件操作：使用 ls/read/search/write/edit/append/mkdir/rm/rename 管理插件目录文件",
+    "插件管理：load_plugin / unload_plugin / reload_plugin / list_plugins",
 ]
 
 
@@ -103,14 +145,108 @@ _TOOLS = [
         "type": "function",
         "function": {
             "name": "rm",
-            "description": "删除文件或目录（目录需为空，或递归删除目录）",
+            "description": "删除文件或目录（目录递归删除）",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "path": {"type": "string", "description": "要删除的文件/目录路径"},
-                    "recursive": {"type": "boolean", "description": "目录递归删除，默认 true"},
                 },
                 "required": ["path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read",
+            "description": "读取文件内容（带行号，可指定起始行/行数）。比 ls 更适合看大文件，如 plugins/xxx/main.py",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "文件路径"},
+                    "start": {"type": "integer", "description": "起始行（从 1 开始，默认 1）"},
+                    "limit": {"type": "integer", "description": "读取行数（默认 200）"},
+                },
+                "required": ["path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search",
+            "description": "在目录或文件中搜索文本（正则），返回匹配的文件与行。用于确认某符号/函数/文案是否存在",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "搜索的目录或文件路径"},
+                    "pattern": {"type": "string", "description": "正则表达式"},
+                    "glob": {"type": "string", "description": "文件过滤，如 *.py"},
+                },
+                "required": ["path", "pattern"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "mkdir",
+            "description": "递归创建目录（已存在不报错）",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "要创建的目录路径"},
+                },
+                "required": ["path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "append",
+            "description": "向文件末尾追加内容（文件不存在则创建）。用于给列表/配置加项，或分步构建大文件",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "文件路径"},
+                    "content": {"type": "string", "description": "要追加的内容"},
+                },
+                "required": ["path", "content"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "rename",
+            "description": "重命名/移动文件或目录",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "原路径"},
+                    "new_path": {"type": "string", "description": "新路径"},
+                },
+                "required": ["path", "new_path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ask_user",
+            "description": "向用户提问/确认：提交你的理解与计划，等待用户批准后再继续。options 最多 4 个；用户回复 /ai #编号 序号 或 /ai #编号 say 内容",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "question": {"type": "string", "description": "要问用户的问题（含你的理解与计划）"},
+                    "options": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "候选选项（可选，最多 4 个）",
+                    },
+                },
+                "required": ["question"],
             },
         },
     },
@@ -167,6 +303,21 @@ _TOOLS = [
 ]
 
 
+_USAGE_TEXT = """\
+用法:
+/ai new [标题]          创建新会话（自动进入，分配 #00~#99）
+/ai <需求>              当前会话发起请求（无会话自动创建）
+/ai #编号 <需求>        指定会话发起请求
+/ai #编号 1~4           回复 AI 提问（选择选项）
+/ai #编号 say 补充      回复 AI 提问（自由补充说明）
+/ai list                列出所有会话
+/ai set #编号           进入指定会话
+/ai del [#编号]         删除会话（默认删除当前）
+/ai stop                暂停当前正在运行的会话
+/pluginlist             查看已加载插件
+"""
+
+
 def register(ctx):
     """插件注册入口"""
     # _init_db 为 async：在事件循环内则调度任务，否则同步跑完（CLI/同步加载场景）
@@ -196,8 +347,8 @@ def _get_config(ctx, key, default=None):
     return ctx.get_config(key, default)
 
 
-def _build_system_prompt(ctx) -> str:
-    """组装 system prompt：人格 + 技能 + 插件规范"""
+def _build_system_prompt(ctx, code=None) -> str:
+    """组装 system prompt：人格 + 技能 + 插件规范 + 工作流 + 会话编号"""
     persona = str(_get_config(ctx, "persona", "")).strip() or _DEFAULT_PERSONA
     skills = _get_config(ctx, "skills", None)
     if isinstance(skills, str):
@@ -209,6 +360,13 @@ def _build_system_prompt(ctx) -> str:
     if skills:
         parts.append("## 技能\n" + "\n".join(f"- {s}" for s in skills))
     parts.append(_PLUGIN_DEV_GUIDE)
+    if code:
+        parts.append(
+            f"## 当前会话\n"
+            f"你的当前会话编号是 #{code}。用户会用 `/ai #{code} 序号` 回复你的选项，"
+            f"或用 `/ai #{code} say 补充内容`。所有提问都在这条会话内进行。"
+        )
+    parts.append(_AGENT_WORKFLOW)
     return "\n\n".join(parts)
 
 
@@ -226,24 +384,47 @@ def _get_cwd(ctx) -> str:
         return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-# ---------------------------------------------------------------- 会话历史（数据库存储，异步）
+# ---------------------------------------------------------------- 运行时状态（内存）
+
+# 正在运行的 AI 任务: (user_id, code) -> asyncio.Task
+_active_tasks = {}
+# 等待用户回复的上下文: (user_id, code) -> {"msgs": [...], "options": [...]}
+_pending_ask = {}
+
+
+# ---------------------------------------------------------------- 会话与消息（数据库存储，异步）
 
 _SESSION_MAX_MSGS = 30  # 每个会话最多保留的消息条数（可配置 session_max_msgs）
-_SESSION_MAX_CHARS = 8000  # 单条消息超过此长度则截断（可配置 session_max_chars）
-
-_SESSION_SYSTEM_FIRST = "这是本会话的历史记录，供后续轮次参考。工具操作细节以磁盘文件为准。"
+_SESSION_MAX_CHARS = 8000  # 触发自动压缩的总字符阈值（可配置 session_max_chars）
 
 
 async def _init_db(ctx) -> None:
-    """初始化会话与用量表（MySQL 方言，SQLite 模式由框架自动翻译）"""
+    """初始化会话/消息/用量表（MySQL 方言，SQLite 模式由框架自动翻译）"""
     try:
         await ctx.db_execute_async(
-            "CREATE TABLE IF NOT EXISTS llm_dev_sessions ("
+            "CREATE TABLE IF NOT EXISTS llm_dev_conversations ("
             "id INT PRIMARY KEY AUTO_INCREMENT, "
             "user_id VARCHAR(32) NOT NULL, "
+            "code VARCHAR(8) NOT NULL, "
+            "title VARCHAR(200), "
+            "status VARCHAR(16) DEFAULT 'idle', "
+            "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+            "last_active_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+        )
+        await ctx.db_execute_async(
+            "CREATE TABLE IF NOT EXISTS llm_dev_messages ("
+            "id INT PRIMARY KEY AUTO_INCREMENT, "
+            "user_id VARCHAR(32) NOT NULL, "
+            "code VARCHAR(8) NOT NULL, "
             "role VARCHAR(16) NOT NULL, "
             "content TEXT, "
             "created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+        )
+        await ctx.db_execute_async(
+            "CREATE TABLE IF NOT EXISTS llm_dev_state ("
+            "user_id VARCHAR(32) PRIMARY KEY, "
+            "current_code VARCHAR(8), "
+            "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
         )
         await ctx.db_execute_async(
             "CREATE TABLE IF NOT EXISTS llm_dev_usage ("
@@ -255,7 +436,10 @@ async def _init_db(ctx) -> None:
             "created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
         )
         await ctx.db_execute_async(
-            "CREATE INDEX IF NOT EXISTS idx_llm_dev_sessions_user ON llm_dev_sessions(user_id, id)"
+            "CREATE INDEX IF NOT EXISTS idx_llm_dev_conv_user ON llm_dev_conversations(user_id, id)"
+        )
+        await ctx.db_execute_async(
+            "CREATE INDEX IF NOT EXISTS idx_llm_dev_msg_user ON llm_dev_messages(user_id, code, id)"
         )
         await ctx.db_execute_async(
             "CREATE INDEX IF NOT EXISTS idx_llm_dev_usage_user ON llm_dev_usage(user_id, id)"
@@ -264,63 +448,208 @@ async def _init_db(ctx) -> None:
         ctx.log(f"初始化数据库表失败: {e}", level="error")
 
 
-async def _get_session(ctx, user_id) -> list:
-    """从数据库读取用户会话历史（含首条 system 说明）"""
+async def _get_current_code(ctx, user_id):
+    """当前会话编号（可能已失效）"""
+    try:
+        rows = await ctx.db_query_async(
+            "SELECT current_code FROM llm_dev_state WHERE user_id = %s", (str(user_id),))
+        if rows and rows[0].get('current_code'):
+            return str(rows[0]['current_code'])
+    except Exception as e:
+        ctx.log(f"读取当前会话失败: {e}", level="warning")
+    return None
+
+
+async def _set_current(ctx, user_id, code):
+    """设置当前会话（先删后插，兼容 SQLite/MySQL）"""
+    try:
+        await ctx.db_execute_async("DELETE FROM llm_dev_state WHERE user_id = %s", (str(user_id),))
+        await ctx.db_execute_async(
+            "INSERT INTO llm_dev_state (user_id, current_code) VALUES (%s, %s)",
+            (str(user_id), code))
+    except Exception as e:
+        ctx.log(f"写入当前会话失败: {e}", level="warning")
+
+
+async def _get_conversation(ctx, user_id, code):
+    try:
+        rows = await ctx.db_query_async(
+            "SELECT code, title, status, created_at FROM llm_dev_conversations "
+            "WHERE user_id = %s AND code = %s",
+            (str(user_id), str(code)))
+        return rows[0] if rows else None
+    except Exception as e:
+        ctx.log(f"查询会话失败: {e}", level="warning")
+        return None
+
+
+async def _allocate_code(ctx, user_id) -> str:
+    """分配两位编号（00~99）：优先空位；全占用则抛弃最旧会话复用其编号"""
+    try:
+        rows = await ctx.db_query_async(
+            "SELECT code FROM llm_dev_conversations WHERE user_id = %s", (str(user_id),))
+        used = {str(r.get('code')) for r in rows}
+        for i in range(100):
+            c = f"{i:02d}"
+            if c not in used:
+                return c
+        # 编号用尽：删除最旧会话（last_active_at 最早）
+        old = await ctx.db_query_async(
+            "SELECT code FROM llm_dev_conversations WHERE user_id = %s "
+            "ORDER BY last_active_at ASC, id ASC LIMIT 1",
+            (str(user_id),))
+        if old:
+            await _delete_conversation(ctx, user_id, str(old[0]['code']))
+            return str(old[0]['code'])
+    except Exception as e:
+        ctx.log(f"分配会话编号失败: {e}", level="warning")
+    return "00"
+
+
+async def _create_conversation(ctx, user_id, title=None) -> str:
+    """创建新会话并设为当前，返回编号"""
+    code = await _allocate_code(ctx, user_id)
+    await ctx.db_execute_async(
+        "INSERT INTO llm_dev_conversations (user_id, code, title, status) VALUES (%s, %s, %s, 'idle')",
+        (str(user_id), code, (title or "").strip()[:200]))
+    await _set_current(ctx, user_id, code)
+    return code
+
+
+async def _update_activity(ctx, user_id, code):
+    """更新会话活跃时间"""
+    try:
+        await ctx.db_execute_async(
+            "UPDATE llm_dev_conversations SET last_active_at = CURRENT_TIMESTAMP, status = 'running' "
+            "WHERE user_id = %s AND code = %s",
+            (str(user_id), str(code)))
+    except Exception:
+        pass
+
+
+async def _set_status(ctx, user_id, code, status):
+    try:
+        await ctx.db_execute_async(
+            "UPDATE llm_dev_conversations SET status = %s, "
+            "last_active_at = CURRENT_TIMESTAMP WHERE user_id = %s AND code = %s",
+            (status, str(user_id), str(code)))
+    except Exception:
+        pass
+
+
+async def _delete_conversation(ctx, user_id, code):
+    """删除会话（含消息、等待上下文、运行任务）"""
+    try:
+        await ctx.db_execute_async(
+            "DELETE FROM llm_dev_conversations WHERE user_id = %s AND code = %s",
+            (str(user_id), str(code)))
+        await ctx.db_execute_async(
+            "DELETE FROM llm_dev_messages WHERE user_id = %s AND code = %s",
+            (str(user_id), str(code)))
+    except Exception as e:
+        ctx.log(f"删除会话失败: {e}", level="warning")
+    key = (str(user_id), str(code))
+    _pending_ask.pop(key, None)
+    task = _active_tasks.get(key)
+    if task and not task.done():
+        task.cancel()
+
+
+async def _get_session(ctx, user_id, code) -> list:
+    """从数据库读取指定会话历史（不含 system 首条）"""
     try:
         limit = int(_get_config(ctx, "session_max_msgs", _SESSION_MAX_MSGS) or _SESSION_MAX_MSGS)
         rows = await ctx.db_query_async(
-            "SELECT role, content FROM llm_dev_sessions WHERE user_id = %s "
+            "SELECT role, content FROM llm_dev_messages WHERE user_id = %s AND code = %s "
             "ORDER BY id DESC LIMIT %s",
-            (str(user_id), limit),
+            (str(user_id), str(code), limit),
         )
-        rows = list(reversed(rows))
-        if not rows or rows[0].get('role') != 'system':
-            rows.insert(0, {"role": "system", "content": _SESSION_SYSTEM_FIRST})
-        return rows
+        return list(reversed(rows))
     except Exception as e:
         ctx.log(f"读取会话失败: {e}", level="warning")
-        return [{"role": "system", "content": _SESSION_SYSTEM_FIRST}]
+        return []
 
 
-async def _append_session(ctx, user_id, role, content):
-    """写入一条会话消息"""
+async def _append_session(ctx, user_id, code, role, content):
+    """写入一条会话消息（按编号隔离，超限裁剪）"""
     try:
         limit = int(_get_config(ctx, "session_max_msgs", _SESSION_MAX_MSGS) or _SESSION_MAX_MSGS)
         char_limit = int(_get_config(ctx, "session_max_chars", _SESSION_MAX_CHARS) or _SESSION_MAX_CHARS)
-        has = await ctx.db_query_async(
-            "SELECT COUNT(*) AS c FROM llm_dev_sessions WHERE user_id = %s AND role = 'system'",
-            (str(user_id),),
-        )
-        if not has or not has[0].get('c'):
-            await ctx.db_execute_async(
-                "INSERT INTO llm_dev_sessions (user_id, role, content) VALUES (%s, %s, %s)",
-                (str(user_id), 'system', _SESSION_SYSTEM_FIRST),
-            )
         await ctx.db_execute_async(
-            "INSERT INTO llm_dev_sessions (user_id, role, content) VALUES (%s, %s, %s)",
-            (str(user_id), role, _clip(content, char_limit)),
+            "INSERT INTO llm_dev_messages (user_id, code, role, content) VALUES (%s, %s, %s, %s)",
+            (str(user_id), str(code), role, _clip(content, char_limit)),
         )
-        # 裁剪旧消息：保留最近 N 条（含 system）
         cnt = await ctx.db_query_async(
-            "SELECT COUNT(*) AS c FROM llm_dev_sessions WHERE user_id = %s", (str(user_id),),
+            "SELECT COUNT(*) AS c FROM llm_dev_messages WHERE user_id = %s AND code = %s",
+            (str(user_id), str(code)),
         )
         if cnt and cnt[0].get('c', 0) > limit:
             extra = cnt[0]['c'] - limit
             await ctx.db_execute_async(
-                "DELETE FROM llm_dev_sessions WHERE user_id = %s AND role <> 'system' "
-                "AND id IN (SELECT id FROM (SELECT id FROM llm_dev_sessions WHERE user_id = %s "
-                "AND role <> 'system' ORDER BY id ASC LIMIT %s) t)",
-                (str(user_id), str(user_id), extra),
+                "DELETE FROM llm_dev_messages WHERE user_id = %s AND code = %s "
+                "AND id IN (SELECT id FROM (SELECT id FROM llm_dev_messages "
+                "WHERE user_id = %s AND code = %s ORDER BY id ASC LIMIT %s) t)",
+                (str(user_id), str(code), str(user_id), str(code), extra),
             )
     except Exception as e:
         ctx.log(f"写入会话失败: {e}", level="warning")
 
 
-async def _clear_session(ctx, user_id):
+async def _maybe_compress(ctx, user_id, code):
+    """
+    上下文自动压缩：消息条数或总字符超限时，
+    把最旧的一半消息交给 LLM 生成摘要，替换为一条 system 摘要，保留最近消息。
+    """
     try:
-        await ctx.db_execute_async("DELETE FROM llm_dev_sessions WHERE user_id = %s", (str(user_id),))
+        limit = int(_get_config(ctx, "session_max_msgs", _SESSION_MAX_MSGS) or _SESSION_MAX_MSGS)
+        char_limit = int(_get_config(ctx, "session_max_chars", _SESSION_MAX_CHARS) or _SESSION_MAX_CHARS)
+        rows = await ctx.db_query_async(
+            "SELECT role, content FROM llm_dev_messages WHERE user_id = %s AND code = %s ORDER BY id ASC",
+            (str(user_id), str(code)),
+        )
+        if not rows:
+            return
+        total = sum(len(str(r.get('content') or '')) for r in rows)
+        # 触发阈值：条数超 2 倍上限 或 字符超 2 倍阈值
+        if len(rows) <= limit * 2 and total <= char_limit * 2:
+            return
+        keep_n = max(5, limit // 2)
+        old = rows[:-keep_n]
+        keep = rows[-keep_n:]
+        if not old:
+            return
+
+        summary = ""
+        try:
+            msgs = [
+                {"role": "system", "content": "你是上下文压缩器。把下面的对话历史压缩成 300 字以内的中文摘要，"
+                                              "保留：用户需求、已完成的文件操作、未完成事项、失败与修复、用户偏好。不要遗漏关键决策。"}
+            ]
+            for r in old:
+                msgs.append({"role": str(r.get('role') or 'user'),
+                             "content": str(r.get('content') or '')})
+            resp = await _chat_once(ctx, msgs)
+            summary = (resp.get('message') or {}).get('content') or ""
+        except Exception as e:
+            ctx.log(f"上下文压缩失败: {e}", level="warning")
+
+        await ctx.db_execute_async(
+            "DELETE FROM llm_dev_messages WHERE user_id = %s AND code = %s",
+            (str(user_id), str(code)),
+        )
+        if summary:
+            await ctx.db_execute_async(
+                "INSERT INTO llm_dev_messages (user_id, code, role, content) VALUES (%s, %s, 'system', %s)",
+                (str(user_id), str(code), "【自动压缩的历史摘要】" + summary[:char_limit]),
+            )
+        for r in keep:
+            await ctx.db_execute_async(
+                "INSERT INTO llm_dev_messages (user_id, code, role, content) VALUES (%s, %s, %s, %s)",
+                (str(user_id), str(code), str(r.get('role') or 'user'), str(r.get('content') or '')),
+            )
+        ctx.log(f"[AI助手] 会话 #{code} 已自动压缩: {len(old)} 条旧消息 → 摘要", level="info")
     except Exception as e:
-        ctx.log(f"清空会话失败: {e}", level="warning")
+        ctx.log(f"压缩检查失败: {e}", level="warning")
 
 
 async def _record_usage(ctx, user_id, usage: dict):
@@ -352,7 +681,7 @@ async def _usage_summary(ctx, user_id) -> str:
         if not rows:
             return ""
         r = rows[0]
-        return f"\nⓘ 本会话累计: {r.get('calls', 0)} 次调用, {r.get('tt', 0)} tokens (输入{r.get('pt', 0)}/输出{r.get('ct', 0)})"
+        return f"\nⓘ 累计: {r.get('calls', 0)} 次调用, {r.get('tt', 0)} tokens (输入{r.get('pt', 0)}/输出{r.get('ct', 0)})"
     except Exception:
         return ""
 
@@ -397,7 +726,6 @@ async def _chat_once(ctx, messages, tools=None, tool_choice=None) -> dict:
     base_url = str(_get_config(ctx, "base_url", "")).strip().rstrip('/')
     url = base_url + "/chat/completions"
     payload = _llm_payload(ctx, messages, tools=tools, tool_choice=tool_choice)
-    ctx.log(f"调用 LLM: {base_url}", level="info")
     # 每次新建 AsyncClient：避免跨事件循环复用被关闭的客户端（插件可热重载）
     async with httpx.AsyncClient(timeout=httpx.Timeout(300.0)) as client:
         resp = await client.post(url, headers=_llm_headers(ctx), json=payload)
@@ -412,17 +740,23 @@ async def _chat_once(ctx, messages, tools=None, tool_choice=None) -> dict:
     return {"message": message, "usage": usage}
 
 
-async def _chat_with_tools(ctx, messages: list, max_rounds: int = None):
+async def _chat_with_tools(ctx, messages: list, max_rounds: int = 0, progress_cb=None):
     """
     带函数调用的对话循环（全异步，不占线程池）：
     1. 发送 messages + tools
     2. 若返回 tool_calls → 依次执行工具（to_thread 内同步 IO）→ 追加结果 → 继续
-    3. 无 tool_calls → 返回 (最终文本, 累计 usage)
-    轮数上限可通过配置 max_tool_rounds 调整（默认 24）。
+    3. 无 tool_calls → 返回 ("done", 文本, usage)
+    4. 工具 ask_user → 返回 ("ask", question, options, usage)，由上层发给用户等待批准
+    max_rounds=0 表示不限制轮数（可配置 max_tool_rounds）。
+    每轮 assistant 的说明文本会通过 progress_cb 实时发送给用户。
     """
-    max_rounds = max_rounds or int(_get_config(ctx, "max_tool_rounds", 24) or 24)
+    max_rounds = int(_get_config(ctx, "max_tool_rounds", 0) or 0)
     total_usage = {}
-    for _ in range(max_rounds):
+    rounds = 0
+    while True:
+        rounds += 1
+        if max_rounds and rounds > max_rounds:
+            raise RuntimeError(f"函数调用超过 {max_rounds} 轮仍未结束")
         result = await _chat_once(ctx, messages, tools=_TOOLS)
         msg = result["message"]
         # 累计 usage
@@ -430,12 +764,22 @@ async def _chat_with_tools(ctx, messages: list, max_rounds: int = None):
         for k in ("prompt_tokens", "completion_tokens", "total_tokens"):
             total_usage[k] = total_usage.get(k, 0) + int(u.get(k) or 0)
 
+        content = msg.get("content")
+        # 日志与进度：让用户看到 AI 的思考/说明
+        if content:
+            ctx.log(f"[AI助手] 第{rounds}轮说明: {_truncate(content, 200)}", level="info")
+            if progress_cb:
+                try:
+                    await progress_cb(content)
+                except Exception:
+                    pass
+
         tool_calls = msg.get("tool_calls")
         if not tool_calls:
-            return msg.get("content") or "", total_usage
+            return ("done", content or "", total_usage)
 
         # 把 assistant 消息（含 tool_calls）加入历史
-        messages.append({"role": "assistant", "content": msg.get("content"), "tool_calls": tool_calls})
+        messages.append({"role": "assistant", "content": content, "tool_calls": tool_calls})
 
         for tc in tool_calls:
             fn = tc.get("function", {})
@@ -444,17 +788,31 @@ async def _chat_with_tools(ctx, messages: list, max_rounds: int = None):
                 args = json.loads(fn.get("arguments") or "{}")
             except json.JSONDecodeError:
                 args = {}
+            ctx.log(f"[AI助手] 调用工具 {name} 参数={json.dumps(args, ensure_ascii=False)[:300]}", level="info")
             try:
                 # 文件/插件操作放到线程池，避免阻塞事件循环
                 result_txt = await asyncio.to_thread(_execute_tool, ctx, name, args)
             except Exception as e:
                 result_txt = f"错误: {e}"
+            # ask_user：停止循环，把问题交回上层发给用户
+            if isinstance(result_txt, dict) and result_txt.get("__ask_user__"):
+                question = str(result_txt.get("__ask_user__") or "").strip()
+                options = result_txt.get("options") or []
+                if not question:
+                    question = "（AI 未填写问题内容）"
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc.get("id", ""),
+                    "content": f"已向用户提问并等待回复。问题: {question}，选项: {options}",
+                })
+                return ("ask", question, options, total_usage)
             messages.append({
                 "role": "tool",
                 "tool_call_id": tc.get("id", ""),
                 "content": str(result_txt),
             })
-    raise RuntimeError(f"函数调用超过 {max_rounds} 轮仍未结束")
+            # 每次工具结果返回后给一个极短让出，避免独占事件循环
+            await asyncio.sleep(0)
 
 
 # ---------------------------------------------------------------- 工具实现
@@ -471,6 +829,16 @@ def _execute_tool(ctx, name: str, args: dict):
     # 插件管理工具（不依赖 path）
     if name in ("load_plugin", "unload_plugin", "reload_plugin", "list_plugins"):
         return _execute_plugin_tool(ctx, name, args)
+
+    if name == "ask_user":
+        question = str(args.get("question") or "").strip()
+        if not question:
+            return "错误: 缺少 question 参数"
+        options = args.get("options") or []
+        if not isinstance(options, list):
+            options = []
+        options = [str(o) for o in options if str(o).strip()][:4]
+        return {"__ask_user__": question, "options": options}
 
     # 文件操作工具：必须提供 path
     path = str(args.get("path") or "").strip()
@@ -524,7 +892,7 @@ def _execute_tool(ctx, name: str, args: dict):
         with open(target, 'r', encoding='utf-8') as f:
             content = f.read()
         if old_text not in content:
-            return f"错误: 未找到要替换的文本（old_text 须精确匹配）"
+            return "错误: 未找到要替换的文本（old_text 须精确匹配）"
         new_content = content.replace(old_text, new_text, 1)
         with open(target, 'w', encoding='utf-8') as f:
             f.write(new_content)
@@ -533,20 +901,99 @@ def _execute_tool(ctx, name: str, args: dict):
     if name == "rm":
         target = _resolve_path(ctx, path)
         if os.path.isdir(target):
-            recursive = bool(args.get("recursive", True))
-            if recursive:
-                import shutil
-                shutil.rmtree(target, ignore_errors=True)
-                return f"已删除目录: {target}"
-            try:
-                os.rmdir(target)
-                return f"已删除空目录: {target}"
-            except OSError as e:
-                return f"错误: {e}"
+            import shutil
+            shutil.rmtree(target, ignore_errors=True)
+            return f"已删除目录: {target}"
         if os.path.isfile(target):
             os.remove(target)
             return f"已删除文件: {target}"
         return f"未找到: {target}"
+
+    if name == "read":
+        target = _resolve_path(ctx, path)
+        if not os.path.isfile(target):
+            return f"错误: 文件不存在 {target}"
+        start = max(1, int(args.get("start") or 1))
+        limit = max(1, int(args.get("limit") or 200))
+        with open(target, 'r', encoding='utf-8', errors='replace') as f:
+            lines = f.readlines()
+        total = len(lines)
+        if start > total:
+            return f"[文件] {target} 共 {total} 行，起始行 {start} 超出范围"
+        chunk = lines[start - 1:start - 1 + limit]
+        out = [f"{start + i}  {ln.rstrip()}" for i, ln in enumerate(chunk)]
+        text = "\n".join(out)
+        head = f"[文件] {target} 共{total}行，显示{start}~{min(start + limit - 1, total)}行"
+        return head + "\n" + text[:4000]
+
+    if name == "search":
+        target = _resolve_path(ctx, path)
+        pattern = str(args.get("pattern") or "")
+        globpat = str(args.get("glob") or "")
+        if not pattern:
+            return "错误: 缺少 pattern 参数"
+        try:
+            rx = re.compile(pattern)
+        except re.error as e:
+            return f"错误: 正则无效 {e}"
+        files = []
+        if os.path.isfile(target):
+            files = [target]
+        elif os.path.isdir(target):
+            for root, _dirs, fnames in os.walk(target):
+                for fn in fnames:
+                    if globpat and not fnmatch.fnmatch(fn, globpat):
+                        continue
+                    files.append(os.path.join(root, fn))
+                    if len(files) >= 300:
+                        break
+                if len(files) >= 300:
+                    break
+        else:
+            return f"未找到: {path}"
+        hits = []
+        for f in files:
+            try:
+                with open(f, 'r', encoding='utf-8', errors='replace') as fh:
+                    for lineno, line in enumerate(fh, 1):
+                        if rx.search(line):
+                            hits.append(f"{f}:{lineno}: {line.rstrip()[:200]}")
+                            if len(hits) >= 100:
+                                break
+            except Exception:
+                continue
+            if len(hits) >= 100:
+                break
+        if not hits:
+            return f"无匹配: {pattern}"
+        return f"[匹配 {len(hits)} 处] {pattern}\n" + "\n".join(hits)
+
+    if name == "mkdir":
+        target = _resolve_path(ctx, path)
+        os.makedirs(target, exist_ok=True)
+        return f"已创建目录: {target}"
+
+    if name == "append":
+        target = _resolve_path(ctx, path)
+        content = str(args.get("content") or "")
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        with open(target, 'a', encoding='utf-8') as f:
+            f.write(content)
+        return f"已追加 {len(content)} 字符到 {target}"
+
+    if name == "rename":
+        target = _resolve_path(ctx, path)
+        new_path = str(args.get("new_path") or "").strip()
+        if not new_path:
+            return "错误: 缺少 new_path"
+        dest = _resolve_path(ctx, new_path)
+        if not os.path.exists(target):
+            return f"错误: 原路径不存在 {target}"
+        try:
+            os.rename(target, dest)
+        except OSError as e:
+            return f"错误: {e}"
+        return f"已重命名: {target} → {dest}"
 
     return f"错误: 未知工具 {name}"
 
@@ -582,7 +1029,7 @@ def _execute_plugin_tool(ctx, name: str, args: dict):
         except Exception as e:
             return f"错误: 加载异常: {e}"
         if not ok:
-            return f"错误: 加载失败，请检查代码或依赖（可 ls 查看，edit 修改，reload_plugin 重试）"
+            return "错误: 加载失败，请检查代码或依赖（可 ls 查看，edit 修改，reload_plugin 重试）"
         try:
             loader.register_commands(plugin_name)
             ctx._framework.router._invalidate_cache()
@@ -604,7 +1051,7 @@ def _execute_plugin_tool(ctx, name: str, args: dict):
             loader.unload_plugin(plugin_name)
             ok = loader.load_plugin(plugin_name)
             if not ok:
-                return f"错误: 重载失败（代码可能有问题）"
+                return "错误: 重载失败（代码可能有问题）"
             loader.register_commands(plugin_name)
             ctx._framework.router._invalidate_cache()
         except Exception as e:
@@ -631,6 +1078,13 @@ def _get_prompt(event, match, cmd_prefix):
     return prompt
 
 
+def _parse_code(text) -> str or None:
+    """解析 #13 / 13 → '13'；无法解析返回 None"""
+    text = (text or "").strip()
+    m = re.fullmatch(r'#?(\d{1,2})', text)
+    return m.group(1) if m else None
+
+
 def _loaded_plugins_text(ctx) -> str:
     """当前已加载插件列表（注入对话上下文）"""
     plugins = ctx._framework.plugin_loader.get_loaded_plugins()
@@ -643,69 +1097,314 @@ def _loaded_plugins_text(ctx) -> str:
     return "\n".join(lines)
 
 
-async def handle_ai(event, match):
-    """
-    通用 AI 对话 + 函数调用（ls/write/edit/rm/load_plugin/unload_plugin/reload_plugin/list_plugins）
-    超管在群内即可让 AI 写插件：/ai 写一个 xxx 插件
-    自动携带本用户会话上下文（跨轮记忆）；发 "/ai 重置" 清空上下文
-    全异步：不占用框架线程池（httpx 异步 HTTP + db_*_async + asend_msg）
-    """
-    prompt = _get_prompt(event, match, "/ai")
-    if not prompt:
-        await ctx.asend_msg(user_id=event.user_id, group_id=event.group_id if event.is_group else None,
-                            message="用法: /ai <指令>\n例如:\n/ai 写一个每日早报插件，每天早上8点发天气\n/ai 修改 echo 插件，加个参数\n/ai 查看 plugins 目录下有哪些插件\n/ai 重置  清空上下文")
-        return
+async def _send(ctx, event, message):
+    await ctx.asend_msg(user_id=event.user_id,
+                        group_id=event.group_id if event.is_group else None,
+                        message=message)
 
-    # 重置上下文
-    if prompt in ("重置", "清空", "新会话", "重来"):
-        await _clear_session(ctx, event.user_id)
-        await ctx.asend_msg(user_id=event.user_id, group_id=event.group_id if event.is_group else None,
-                            message="✅ 已清空该用户的历史上下文，AI 将从全新状态开始。")
-        return
 
-    if not str(_get_config(ctx, "base_url", "")).strip():
-        await ctx.asend_msg(user_id=event.user_id, group_id=event.group_id if event.is_group else None,
-                            message="尚未配置 LLM 接口，请在 Web UI → 插件配置 中设置 base_url / api_key / model。")
-        return
+# ---- 会话子命令 ----
 
-    await ctx.asend_msg(user_id=event.user_id, group_id=event.group_id if event.is_group else None,
-                        message=f"🤖 已收到指令，AI 正在处理（可写文件并加载插件，通常需 1~2 分钟）...\n{prompt}")
+async def _cmd_new(ctx, event, title=None):
+    user_id = str(event.user_id)
+    code = await _create_conversation(ctx, user_id, title)
+    text = f"✅ 已创建会话 #{code} 并自动进入。"
+    if title:
+        text += f"\n标题: {title}"
+    text += "\n直接发 /ai <需求> 开始；/ai list 查看所有会话；/ai del 删除本会话"
+    await _send(ctx, event, text)
+
+
+async def _cmd_list(ctx, event):
+    user_id = str(event.user_id)
     try:
-        system = _build_system_prompt(ctx)
-        history = await _get_session(ctx, event.user_id)
-        # 组装：system(人格) + 历史 + 当前指令（当前插件列表注入到 user 消息）
-        user_content = (
-            f"{_loaded_plugins_text(ctx)}\n\n"
-            f"用户指令：{prompt}\n\n"
-            "（提示：如需写新插件，请先 ls plugins/llm_plugin_gen/docs/INDEX.md 阅读文档索引，"
-            "再按需 ls 具体文档；然后按规范用 write 创建文件并调用 load_plugin 加载；若加载失败可 edit/reload_plugin 修复）"
-        )
-        messages = [
-            {"role": "system", "content": system},
-            *history,
-            {"role": "user", "content": user_content},
-        ]
-        result, usage = await _chat_with_tools(ctx, messages)
-        if not result.strip():
-            result = "（AI 未返回文本内容）"
+        rows = await ctx.db_query_async(
+            "SELECT code, title, status, created_at FROM llm_dev_conversations "
+            "WHERE user_id = %s ORDER BY id ASC", (user_id,))
+    except Exception as e:
+        ctx.log(f"列出会话失败: {e}", level="warning")
+        rows = []
+    if not rows:
+        await _send(ctx, event, "📭 还没有会话。用 /ai new 创建第一个会话。")
+        return
+    current = await _get_current_code(ctx, user_id)
+    lines = [f"📋 会话列表（{len(rows)} 个，当前 #{current or '无'}）:"]
+    for r in rows:
+        code = str(r.get('code') or '')
+        title = str(r.get('title') or '').strip()
+        status = str(r.get('status') or 'idle')
+        mark = "▶" if code == current else " "
+        lines.append(f"{mark} #{code}  {title or '(无标题)'}  [{status}]")
+    lines.append("\n/ai set #编号 进入  |  /ai del #编号 删除")
+    await _send(ctx, event, "\n".join(lines))
 
-        # 记录本轮回话 + token 消耗
-        await _append_session(ctx, event.user_id, "user", prompt)
-        await _append_session(ctx, event.user_id, "assistant", result)
-        await _record_usage(ctx, event.user_id, usage)
 
-        # 附带本次与累计 token 消耗
+async def _cmd_set(ctx, event, code=None):
+    user_id = str(event.user_id)
+    if not code:
+        await _send(ctx, event, "用法: /ai set #编号")
+        return
+    conv = await _get_conversation(ctx, user_id, code)
+    if not conv:
+        await _send(ctx, event, f"会话 #{code} 不存在（/ai list 查看）")
+        return
+    await _set_current(ctx, user_id, code)
+    title = str(conv.get('title') or '').strip()
+    text = f"✅ 已进入会话 #{code}。" + (f"（{title}）" if title else "")
+    text += "\n直接发 /ai <需求> 开始。"
+    await _send(ctx, event, text)
+
+
+async def _cmd_del(ctx, event, code=None):
+    user_id = str(event.user_id)
+    if not code:
+        code = await _get_current_code(ctx, user_id)
+        if not code:
+            await _send(ctx, event, "当前没有会话可删除。用法: /ai del [#编号]")
+            return
+    conv = await _get_conversation(ctx, user_id, code)
+    if not conv:
+        await _send(ctx, event, f"会话 #{code} 不存在（/ai list 查看）")
+        return
+    await _delete_conversation(ctx, user_id, code)
+    # 若删的是当前会话，清空 current
+    current = await _get_current_code(ctx, user_id)
+    if current == code:
+        await _set_current(ctx, user_id, None)
+    await _send(ctx, event, f"🗑 会话 #{code} 已删除。")
+
+
+async def _cmd_stop(ctx, event):
+    user_id = str(event.user_id)
+    code = await _get_current_code(ctx, user_id)
+    if not code:
+        await _send(ctx, event, "当前没有会话。")
+        return
+    key = (user_id, code)
+    task = _active_tasks.get(key)
+    if task and not task.done():
+        task.cancel()
+        await _send(ctx, event, f"⏹ 已请求暂停会话 #{code}，AI 正在停止当前操作...")
+    else:
+        await _send(ctx, event, f"会话 #{code} 当前没有正在运行的任务。")
+
+
+# ---- 对话主流程 ----
+
+async def _start_ai(ctx, event, code, prompt):
+    """发起一次 AI 请求（创建 task 后台运行，便于 /ai stop 取消）"""
+    user_id = str(event.user_id)
+    if not code:
+        code = await _get_current_code(ctx, user_id)
+        if not code:
+            code = await _create_conversation(ctx, user_id, None)
+            await _send(ctx, event, f"✅ 已自动创建会话 #{code}。")
+    else:
+        # 指定编号但会话已失效（被自动回收等）→ 重建
+        if not await _get_conversation(ctx, user_id, code):
+            await _send(ctx, event, f"会话 #{code} 已不存在，已重新创建。")
+            await _delete_conversation(ctx, user_id, code)
+            code = await _create_conversation(ctx, user_id, None)
+    if not str(_get_config(ctx, "base_url", "")).strip():
+        await _send(ctx, event, "尚未配置 LLM 接口，请在 Web UI → 插件配置 中设置 base_url / api_key / model。")
+        return
+    await _send(ctx, event, f"🤖 会话 #{code} 已收到指令，AI 正在处理（每个节点会实时汇报进度）...\n{_truncate(prompt, 200)}")
+    task = asyncio.create_task(_run_ai(ctx, event, code, prompt))
+    _active_tasks[(user_id, code)] = task
+    # 防止 task 异常被静默吞掉
+    task.add_done_callback(lambda t: _active_tasks.pop((user_id, code), None) if t.done() else None)
+
+
+async def _run_ai(ctx, event, code, prompt, resumed_msgs=None):
+    """AI 主循环：加载历史 → 工具循环（ask_user 门控 / 进度推送）→ 汇报"""
+    user_id = str(event.user_id)
+    key = (user_id, code)
+    try:
+        await _set_status(ctx, user_id, code, "running")
+        if prompt:
+            await _append_session(ctx, user_id, code, "user", prompt)
+        # 上下文超限自动压缩
+        await _maybe_compress(ctx, user_id, code)
+
+        if resumed_msgs is not None:
+            msgs = resumed_msgs
+        elif key in _pending_ask:
+            # 会话正处于 waiting 状态：沿用未完成的上下文，并把新指令并入
+            info = _pending_ask.pop(key)
+            msgs = list(info["msgs"])
+            if prompt:
+                msgs.append({"role": "user", "content": f"（用户新指令）{prompt}"})
+        else:
+            system = _build_system_prompt(ctx, code)
+            history = await _get_session(ctx, user_id, code)
+            msgs = [{"role": "system", "content": system}, *history]
+            user_content = (
+                f"{_loaded_plugins_text(ctx)}\n\n"
+                f"用户指令：{prompt}\n\n"
+                "（提示：写新插件前先 ls plugins/llm_plugin_gen/docs/INDEX.md 读文档索引，"
+                "再按需 ls 具体文档；每个新需求必须先 ask_user 确认，用户批准后才允许修改文件；"
+                "简单需求直接做，不要过度思考）"
+            )
+            msgs.append({"role": "user", "content": user_content})
+
+        # 进度回调：每轮 AI 说明文本实时发到群里
+        async def progress(text):
+            await _send(ctx, event, f"[#{code}] {_truncate(text, 800)}")
+
+        outcome = await _chat_with_tools(ctx, msgs, progress_cb=progress)
+
+        if outcome[0] == "ask":
+            _question, options, usage = outcome[1], outcome[2], outcome[3]
+            _pending_ask[key] = {"msgs": msgs, "options": options}
+            await _record_usage(ctx, user_id, usage)
+            await _set_status(ctx, user_id, code, "waiting")
+            text = f"🤖 会话 #{code} 需要你确认：\n{_question}"
+            if options:
+                text += "\n\n" + "\n".join(f"{i + 1}. {o}" for i, o in enumerate(options))
+            text += f"\n\n回复: /ai #{code} 序号  或  /ai #{code} say 补充说明"
+            await _send(ctx, event, text)
+            return
+
+        _result = outcome[1] or "（AI 未返回文本内容）"
+        usage = outcome[3]
+        await _append_session(ctx, user_id, code, "assistant", _result)
+        await _record_usage(ctx, user_id, usage)
         cost = ""
         if usage.get('total_tokens'):
             cost = f"\n[本次消耗 {usage.get('total_tokens')} tokens]"
-        summary = await _usage_summary(ctx, event.user_id)
-
-        await ctx.asend_msg(user_id=event.user_id, group_id=event.group_id if event.is_group else None,
-                            message=_truncate(result) + cost + summary)
+        summary = await _usage_summary(ctx, user_id)
+        await _set_status(ctx, user_id, code, "idle")
+        await _send(ctx, event, _truncate(_result) + cost + summary)
+    except asyncio.CancelledError:
+        await _set_status(ctx, user_id, code, "idle")
+        await _send(ctx, event, f"⏹ 会话 #{code} 已暂停。可直接发 /ai <需求> 继续。")
+        raise
     except Exception as e:
         ctx.log(f"AI 处理失败: {e}\n{traceback.format_exc()}", level="error")
-        await ctx.asend_msg(user_id=event.user_id, group_id=event.group_id if event.is_group else None,
-                            message=f"❌ 处理失败: {_truncate(str(e), 500)}")
+        await _set_status(ctx, user_id, code, "idle")
+        await _send(ctx, event, f"❌ 会话 #{code} 处理失败: {_truncate(str(e), 500)}")
+    finally:
+        _active_tasks.pop(key, None)
+
+
+async def _reply_option(ctx, event, code, num):
+    """用户选择选项后，把选择注入上下文并继续 AI"""
+    user_id = str(event.user_id)
+    key = (user_id, code)
+    info = _pending_ask.get(key)
+    if not info:
+        await _send(ctx, event, f"会话 #{code} 当前没有待确认的问题，可直接 /ai #{code} <需求> 继续。")
+        return
+    _pending_ask.pop(key)
+    options = info.get("options") or []
+    opt = options[num - 1] if 1 <= num <= len(options) else f"选项 {num}"
+    msgs = list(info["msgs"])
+    msgs.append({"role": "user", "content": f"（用户回复 /ai #{code} {num}）用户选择：{num}. {opt}"})
+    await _append_session(ctx, user_id, code, "user", f"（回复确认）用户选择：{num}. {opt}")
+    await _start_ai_ctx(ctx, event, code, msgs)
+
+
+async def _start_ai_ctx(ctx, event, code, msgs):
+    """用已有消息上下文继续 AI（不追加用户指令）"""
+    user_id = str(event.user_id)
+    if not str(_get_config(ctx, "base_url", "")).strip():
+        await _send(ctx, event, "尚未配置 LLM 接口。")
+        return
+    task = asyncio.create_task(_run_ai(ctx, event, code, None, resumed_msgs=msgs))
+    _active_tasks[(user_id, code)] = task
+    task.add_done_callback(lambda t: _active_tasks.pop((user_id, code), None) if t.done() else None)
+
+
+async def _reply_say(ctx, event, code, text):
+    """用户自由补充后，把补充内容注入上下文并继续 AI"""
+    user_id = str(event.user_id)
+    key = (user_id, code)
+    info = _pending_ask.get(key)
+    if not info:
+        await _send(ctx, event, f"会话 #{code} 当前没有待确认的问题，可直接 /ai #{code} <需求> 继续。")
+        return
+    _pending_ask.pop(key)
+    msgs = list(info["msgs"])
+    msgs.append({"role": "user", "content": f"（用户回复 /ai #{code} say）用户补充：{text}"})
+    await _append_session(ctx, user_id, code, "user", f"（回复补充）{text}")
+    await _start_ai_ctx(ctx, event, code, msgs)
+
+
+async def _show_conversation(ctx, event, code):
+    """/ai #编号：展示会话信息"""
+    user_id = str(event.user_id)
+    conv = await _get_conversation(ctx, user_id, code)
+    if not conv:
+        await _send(ctx, event, f"会话 #{code} 不存在（/ai list 查看）")
+        return
+    title = str(conv.get('title') or '').strip()
+    status = str(conv.get('status') or 'idle')
+    text = f"📌 会话 #{code}"
+    if title:
+        text += f"（{title}）"
+    text += f" 状态: {status}"
+    if (user_id, code) in _pending_ask:
+        text += "\n⏳ 有一个问题在等你确认，回复 /ai #" + code + " 序号"
+    text += "\n发 /ai #" + code + " <需求> 在此会话继续。"
+    await _send(ctx, event, text)
+
+
+async def handle_ai(event, match):
+    """
+    通用 AI 对话 + 会话管理。
+    全异步：不占用框架线程池（httpx 异步 HTTP + db_*_async + asend_msg）
+    """
+    prompt = _get_prompt(event, match, "/ai")
+    user_id = str(event.user_id)
+    if not prompt:
+        await _send(ctx, event, _USAGE_TEXT)
+        return
+
+    low = prompt.strip()
+
+    # ---- 子命令 ----
+    if low == "new" or low.startswith("new "):
+        await _cmd_new(ctx, event, low[4:].strip() if len(low) > 3 else None)
+        return
+    if low == "list":
+        await _cmd_list(ctx, event)
+        return
+    if low == "del" or low.startswith("del "):
+        await _cmd_del(ctx, event, _parse_code(low[3:]))
+        return
+    if low == "set" or low.startswith("set "):
+        await _cmd_set(ctx, event, _parse_code(low[3:]))
+        return
+    if low == "stop":
+        await _cmd_stop(ctx, event)
+        return
+    if prompt in ("重置", "清空", "新会话", "重来"):
+        await _cmd_del(ctx, event, None)
+        return
+
+    # ---- #编号 语法 ----
+    m = re.match(r'^#(\d{1,2})(?:\s+(.*))?$', prompt)
+    if m:
+        code = m.group(1)
+        rest = (m.group(2) or "").strip()
+        if not rest:
+            await _show_conversation(ctx, event, code)
+            return
+        if re.fullmatch(r'[1-4]', rest):
+            await _reply_option(ctx, event, code, int(rest))
+            return
+        if rest.lower().startswith("say"):
+            text = rest[3:].strip()
+            if not text:
+                await _send(ctx, event, f"用法: /ai #{code} say <补充内容>")
+                return
+            await _reply_say(ctx, event, code, text)
+            return
+        await _start_ai(ctx, event, code, rest)
+        return
+
+    # ---- 普通请求：当前会话（无则自动创建） ----
+    await _start_ai(ctx, event, None, prompt)
 
 
 async def handle_list_plugins(event, match):
@@ -719,4 +1418,4 @@ async def handle_list_plugins(event, match):
             meta = info.get('meta', {})
             lines.append(f"- {meta.get('name', name)} ({name}) v{meta.get('version', '?')}")
         text = "\n".join(lines)
-    await ctx.asend_msg(user_id=event.user_id, group_id=event.group_id if event.is_group else None, message=text)
+    await _send(ctx, event, text)

@@ -33,9 +33,9 @@
     },
     {
       "name": "llm_plugin_gen",
-      "version": "1.4.1",
+      "version": "1.5.0",
       "author": "ZGRIC",
-      "description": "通过 OpenAI 兼容接口让 LLM 编写插件并管理插件文件（全异步，支持人格/skills/函数调用）",
+      "description": "对话式 LLM 插件开发（Claude Code 风格：会话编号 #00~#99 + ask_user 批准门控 + 自动压缩 + /ai stop 暂停，全异步）",
       "repo": "kuangxing6367/zcbot_plugins",
       "branch": "main",
       "sub_path": "plugins/llm_plugin_gen",

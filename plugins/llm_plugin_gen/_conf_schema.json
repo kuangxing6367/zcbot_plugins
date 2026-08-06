@@ -29,29 +29,29 @@
   },
   "max_tool_rounds": {
     "type": "number",
-    "description": "函数调用最大轮数（写复杂插件时不够可调大）",
-    "default": 24
+    "description": "函数调用最大轮数（0 表示不限制，默认不限制）",
+    "default": 0
   },
   "session_max_msgs": {
     "type": "number",
-    "description": "会话历史最多保留消息条数",
+    "description": "会话历史最多保留消息条数（超 2 倍自动触发压缩）",
     "default": 30
   },
   "session_max_chars": {
     "type": "number",
-    "description": "单条消息超长截断上限（字符）",
+    "description": "会话总字符超过 2 倍此阈值时自动压缩（旧消息 LLM 摘要）",
     "default": 8000
   },
   "persona": {
     "type": "string",
     "description": "人格设定（自定义 system prompt，可写中文）",
-    "default": "你是 ZCBOT OneBot QQ 机器人框架的插件开发专家，擅长编写高质量、健壮的 Python 插件。",
+    "default": "你是 ZCBOT OneBot QQ 机器人框架的插件开发专家代理，擅长把需求变成可运行、健壮的 Python 插件代码。",
     "hint": "留空使用默认人格"
   },
   "skills": {
     "type": "string",
     "description": "技能列表（每行一条，注入 system prompt）",
-    "default": "生成插件：根据用户需求生成符合框架规范的插件代码\n修改插件：阅读现有插件代码后修复 Bug / 增加功能\n文件操作：使用 ls/write/edit/rm 管理插件目录文件",
+    "default": "生成插件：根据用户需求生成符合框架规范的插件代码\n修改插件：阅读现有插件代码后修复 Bug / 增加功能\n文件操作：使用 ls/read/search/write/edit/append/mkdir/rm/rename 管理插件目录文件\n插件管理：load_plugin / unload_plugin / reload_plugin / list_plugins",
     "hint": "每行一个技能，换行分隔"
   },
   "cwd": {
