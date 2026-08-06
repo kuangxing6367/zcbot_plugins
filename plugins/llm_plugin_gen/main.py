@@ -12,6 +12,7 @@ LLM 开发助手插件
 
 配置项（_conf_schema.json，Web UI 可改）：
   base_url / api_key / model / temperature / max_tokens
+  max_tool_rounds / session_max_msgs / session_max_chars
   persona / skills / cwd
 
 权限说明：命令仅超管可用；文件操作不受路径限制（超管自负其责）。
@@ -27,7 +28,7 @@ import httpx
 
 __plugin_meta__ = {
     "name": "LLM 开发助手",
-    "version": "1.4.0",
+    "version": "1.4.1",
     "author": "ZGRIC",
     "desc": "通过 OpenAI 兼容接口让 LLM 编写插件并管理插件文件（支持人格/skills/函数调用）",
     "priority": 100,
@@ -227,8 +228,8 @@ def _get_cwd(ctx) -> str:
 
 # ---------------------------------------------------------------- 会话历史（数据库存储，异步）
 
-_SESSION_MAX_MSGS = 20  # 每个会话最多保留的消息条数
-_SESSION_MAX_CHARS = 6000  # 单条消息超过此长度则截断
+_SESSION_MAX_MSGS = 30  # 每个会话最多保留的消息条数（可配置 session_max_msgs）
+_SESSION_MAX_CHARS = 8000  # 单条消息超过此长度则截断（可配置 session_max_chars）
 
 _SESSION_SYSTEM_FIRST = "这是本会话的历史记录，供后续轮次参考。工具操作细节以磁盘文件为准。"
 
@@ -266,10 +267,11 @@ async def _init_db(ctx) -> None:
 async def _get_session(ctx, user_id) -> list:
     """从数据库读取用户会话历史（含首条 system 说明）"""
     try:
+        limit = int(_get_config(ctx, "session_max_msgs", _SESSION_MAX_MSGS) or _SESSION_MAX_MSGS)
         rows = await ctx.db_query_async(
             "SELECT role, content FROM llm_dev_sessions WHERE user_id = %s "
             "ORDER BY id DESC LIMIT %s",
-            (str(user_id), _SESSION_MAX_MSGS),
+            (str(user_id), limit),
         )
         rows = list(reversed(rows))
         if not rows or rows[0].get('role') != 'system':
@@ -283,6 +285,8 @@ async def _get_session(ctx, user_id) -> list:
 async def _append_session(ctx, user_id, role, content):
     """写入一条会话消息"""
     try:
+        limit = int(_get_config(ctx, "session_max_msgs", _SESSION_MAX_MSGS) or _SESSION_MAX_MSGS)
+        char_limit = int(_get_config(ctx, "session_max_chars", _SESSION_MAX_CHARS) or _SESSION_MAX_CHARS)
         has = await ctx.db_query_async(
             "SELECT COUNT(*) AS c FROM llm_dev_sessions WHERE user_id = %s AND role = 'system'",
             (str(user_id),),
@@ -294,14 +298,14 @@ async def _append_session(ctx, user_id, role, content):
             )
         await ctx.db_execute_async(
             "INSERT INTO llm_dev_sessions (user_id, role, content) VALUES (%s, %s, %s)",
-            (str(user_id), role, _clip(content)),
+            (str(user_id), role, _clip(content, char_limit)),
         )
         # 裁剪旧消息：保留最近 N 条（含 system）
         cnt = await ctx.db_query_async(
             "SELECT COUNT(*) AS c FROM llm_dev_sessions WHERE user_id = %s", (str(user_id),),
         )
-        if cnt and cnt[0].get('c', 0) > _SESSION_MAX_MSGS:
-            extra = cnt[0]['c'] - _SESSION_MAX_MSGS
+        if cnt and cnt[0].get('c', 0) > limit:
+            extra = cnt[0]['c'] - limit
             await ctx.db_execute_async(
                 "DELETE FROM llm_dev_sessions WHERE user_id = %s AND role <> 'system' "
                 "AND id IN (SELECT id FROM (SELECT id FROM llm_dev_sessions WHERE user_id = %s "
@@ -408,13 +412,15 @@ async def _chat_once(ctx, messages, tools=None, tool_choice=None) -> dict:
     return {"message": message, "usage": usage}
 
 
-async def _chat_with_tools(ctx, messages: list, max_rounds: int = 12):
+async def _chat_with_tools(ctx, messages: list, max_rounds: int = None):
     """
     带函数调用的对话循环（全异步，不占线程池）：
     1. 发送 messages + tools
     2. 若返回 tool_calls → 依次执行工具（to_thread 内同步 IO）→ 追加结果 → 继续
     3. 无 tool_calls → 返回 (最终文本, 累计 usage)
+    轮数上限可通过配置 max_tool_rounds 调整（默认 24）。
     """
+    max_rounds = max_rounds or int(_get_config(ctx, "max_tool_rounds", 24) or 24)
     total_usage = {}
     for _ in range(max_rounds):
         result = await _chat_once(ctx, messages, tools=_TOOLS)

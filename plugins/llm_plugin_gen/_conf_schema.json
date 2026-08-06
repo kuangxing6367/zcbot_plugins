@@ -27,6 +27,21 @@
     "description": "最大生成 token 数",
     "default": 8192
   },
+  "max_tool_rounds": {
+    "type": "number",
+    "description": "函数调用最大轮数（写复杂插件时不够可调大）",
+    "default": 24
+  },
+  "session_max_msgs": {
+    "type": "number",
+    "description": "会话历史最多保留消息条数",
+    "default": 30
+  },
+  "session_max_chars": {
+    "type": "number",
+    "description": "单条消息超长截断上限（字符）",
+    "default": 8000
+  },
   "persona": {
     "type": "string",
     "description": "人格设定（自定义 system prompt，可写中文）",
