@@ -864,8 +864,9 @@ fn image_resize(img_bytes: &[u8], width: u32, height: u32, keep_ratio: bool) -> 
     } else {
         (width, height)
     };
-    let resized = img.resize(nw, nh, image::imageops::FilterType::Lanczos3);
-    encode_png_img(&resized).map_err(PyRuntimeError::new_err)
+    let rgba = img.to_rgba8();
+    let resized = image::imageops::resize(&rgba, nw, nh, image::imageops::FilterType::Lanczos3);
+    encode_png_img(&image::DynamicImage::ImageRgba8(resized)).map_err(PyRuntimeError::new_err)
 }
 
 /// 16:9 居中裁剪，返回 PNG bytes
@@ -897,8 +898,13 @@ fn image_circle_crop(img_bytes: &[u8], size: u32) -> PyResult<Vec<u8>> {
     if size == 0 {
         return Err(PyRuntimeError::new_err("size 必须大于 0"));
     }
-    let square = img.resize(size, size, image::imageops::FilterType::Lanczos3);
-    let rgba = square.to_rgba8();
+    let rgba_in = img.to_rgba8();
+    let square = image::imageops::resize(
+        &rgba_in,
+        size,
+        size,
+        image::imageops::FilterType::Lanczos3,
+    );
     let mut out = image::RgbaImage::new(size, size);
     let r = (size as f32 / 2.0).round() as i32;
     let cx = r;
@@ -908,7 +914,7 @@ fn image_circle_crop(img_bytes: &[u8], size: u32) -> PyResult<Vec<u8>> {
             let dx = x as i32 - cx;
             let dy = y as i32 - cy;
             if dx * dx + dy * dy <= r * r {
-                out.put_pixel(x, y, *rgba.get_pixel(x, y));
+                out.put_pixel(x, y, *square.get_pixel(x, y));
             }
         }
     }
