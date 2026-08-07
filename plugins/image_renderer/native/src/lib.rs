@@ -22,6 +22,8 @@ use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
+pub(crate) mod canvas;
+
 // ---------------------------------------------------------------- 颜色
 
 #[derive(Clone, Copy)]
@@ -68,13 +70,13 @@ impl Default for Style {
 }
 
 #[derive(Clone, Copy, PartialEq)]
-enum Align {
+pub(crate) enum Align {
     Left,
     Center,
     Right,
 }
 
-fn parse_color(obj: &Bound<'_, PyAny>) -> PyResult<Option<[u8; 4]>> {
+pub(crate) fn parse_color(obj: &Bound<'_, PyAny>) -> PyResult<Option<[u8; 4]>> {
     if obj.is_none() {
         return Ok(None);
     }
@@ -248,13 +250,13 @@ impl Opts {
 
 // ---------------------------------------------------------------- 字体 & 排版
 
-fn load_font(path: &str) -> Result<Font, String> {
+pub(crate) fn load_font(path: &str) -> Result<Font, String> {
     let data = std::fs::read(path).map_err(|e| format!("读取字体失败: {e}"))?;
     Font::from_bytes(data, FontSettings::default()).map_err(|e| format!("解析字体失败: {e}"))
 }
 
 /// 按字符度量宽度换行（CJK 友好），保持与 PIL 版行为一致
-fn wrap_lines(font: &Font, text: &str, size: f32, max_w: f32) -> Vec<String> {
+pub(crate) fn wrap_lines(font: &Font, text: &str, size: f32, max_w: f32) -> Vec<String> {
     let mut lines: Vec<String> = Vec::new();
     for para in text.split('\n') {
         let mut line = String::new();
@@ -277,7 +279,7 @@ fn wrap_lines(font: &Font, text: &str, size: f32, max_w: f32) -> Vec<String> {
     lines
 }
 
-fn measure_text(font: &Font, text: &str, size: f32) -> f32 {
+pub(crate) fn measure_text(font: &Font, text: &str, size: f32) -> f32 {
     let mut w = 0.0f32;
     for ch in text.chars() {
         let (m, _) = font.rasterize(ch, size);
@@ -286,7 +288,7 @@ fn measure_text(font: &Font, text: &str, size: f32) -> f32 {
     w
 }
 
-fn set_px(buf: &mut [u8], width: u32, x: i32, y: i32, c: [u8; 4]) {
+pub(crate) fn set_px(buf: &mut [u8], width: u32, x: i32, y: i32, c: [u8; 4]) {
     if x < 0 || y < 0 || x >= width as i32 {
         return;
     }
@@ -298,7 +300,7 @@ fn set_px(buf: &mut [u8], width: u32, x: i32, y: i32, c: [u8; 4]) {
 
 /// 在 (baseline_x, baseline_y) 绘制文本，按 glyph 覆盖率做颜色混合
 #[allow(clippy::too_many_arguments)]
-fn draw_text(
+pub(crate) fn draw_text(
     buf: &mut [u8],
     width: u32,
     height: u32,
@@ -342,7 +344,7 @@ fn draw_text(
 }
 
 /// 计算行在 [x0, x1] 区间内按对齐方式命中的起点
-fn line_x(align: Align, line_w: f32, x0: i32, x1: i32) -> i32 {
+pub(crate) fn line_x(align: Align, line_w: f32, x0: i32, x1: i32) -> i32 {
     let inner = (x1 - x0) as f32;
     match align {
         Align::Left => x0,
@@ -352,7 +354,7 @@ fn line_x(align: Align, line_w: f32, x0: i32, x1: i32) -> i32 {
 }
 
 /// 判断像素是否位于 (x0,y0)-(x1,y1) 圆角矩形内（r 为圆角半径）
-fn in_rounded(x: i32, y: i32, x0: i32, y0: i32, x1: i32, y1: i32, r: i32) -> bool {
+pub(crate) fn in_rounded(x: i32, y: i32, x0: i32, y0: i32, x1: i32, y1: i32, r: i32) -> bool {
     if x < x0 || y < y0 || x >= x1 || y >= y1 {
         return false;
     }
@@ -375,7 +377,7 @@ fn in_rounded(x: i32, y: i32, x0: i32, y0: i32, x1: i32, y1: i32, r: i32) -> boo
     dx * dx + dy * dy <= r * r
 }
 
-fn lerp_color(a: [u8; 4], b: [u8; 4], t: f32) -> [u8; 4] {
+pub(crate) fn lerp_color(a: [u8; 4], b: [u8; 4], t: f32) -> [u8; 4] {
     let m = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * t).round() as u8;
     [m(a[0], b[0]), m(a[1], b[1]), m(a[2], b[2]), 255]
 }
@@ -430,7 +432,7 @@ fn draw_border(buf: &mut [u8], width: u32, height: u32, style: &Style) {
     }
 }
 
-fn encode_png(width: u32, height: u32, buf: Vec<u8>) -> Result<Vec<u8>, String> {
+pub(crate) fn encode_png(width: u32, height: u32, buf: Vec<u8>) -> Result<Vec<u8>, String> {
     use image::{ImageBuffer, Rgba};
     let img = ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(width, height, buf)
         .ok_or_else(|| "图像尺寸非法".to_string())?;
@@ -474,12 +476,14 @@ fn render_text(
     let inner_w = (width as i32 - padding as i32 * 2).max(1) as f32;
     let lines = wrap_lines(&font, text, font_size as f32, inner_w);
     let height = padding * 2 + lines.len() as u32 * line_h + 20;
-    let mut buf = vec![0u8; (width * height * 4) as usize];
-    fill_bg(&mut buf, width, height, &o.style, [248, 250, 255, 255]);
-    draw_border(&mut buf, width, height, &o.style);
+    let mut canvas = canvas::Canvas::new_raw(width, height, [0, 0, 0, 0], None)
+        .map_err(PyRuntimeError::new_err)?;
+    canvas.font = Some(font);
+    fill_bg(&mut canvas.buf, width, height, &o.style, [248, 250, 255, 255]);
+    draw_border(&mut canvas.buf, width, height, &o.style);
     let mut top = padding as i32;
     for line in &lines {
-        let lw = measure_text(&font, line, font_size as f32);
+        let lw = measure_text(canvas.font.as_ref().unwrap(), line, font_size as f32);
         let bx = line_x(
             o.style.align,
             lw,
@@ -487,10 +491,10 @@ fn render_text(
             width as i32 - padding as i32,
         );
         draw_text(
-            &mut buf,
+            &mut canvas.buf,
             width,
             height,
-            &font,
+            canvas.font.as_ref().unwrap(),
             font_size as f32,
             bx,
             top + font_size as i32,
@@ -499,7 +503,7 @@ fn render_text(
         );
         top += line_h as i32;
     }
-    encode_png(width, height, buf).map_err(PyRuntimeError::new_err)
+    canvas.to_png_bytes().map_err(PyRuntimeError::new_err)
 }
 
 /// 渲染信息卡片图片，返回 PNG bytes
@@ -538,30 +542,32 @@ fn render_card(
     let footer_h = if o.show_footer { 30u32 } else { 0u32 };
     let total_h = padding * 2 + title_h + content_h + footer_h;
 
-    let mut buf = vec![0u8; (width * total_h * 4) as usize];
+    let mut canvas = canvas::Canvas::new_raw(width, total_h, [0, 0, 0, 0], None)
+        .map_err(PyRuntimeError::new_err)?;
+    canvas.font = Some(font);
     // 卡片默认垂直渐变背景（与 PIL 版一致）
-    fill_bg(&mut buf, width, total_h, &o.style, [248, 250, 255, 255]);
+    fill_bg(&mut canvas.buf, width, total_h, &o.style, [248, 250, 255, 255]);
     if o.style.bg_color.is_none() && o.style.bg_gradient.is_none() {
         // 覆盖默认渐变：顶部浅蓝 → 底部微黄
         let mut g = o.style;
         g.bg_gradient = Some(([248, 250, 255, 255], [255, 255, 245, 255]));
-        fill_bg(&mut buf, width, total_h, &g, [248, 250, 255, 255]);
+        fill_bg(&mut canvas.buf, width, total_h, &g, [248, 250, 255, 255]);
     }
-    draw_border(&mut buf, width, total_h, &o.style);
+    draw_border(&mut canvas.buf, width, total_h, &o.style);
 
     // 标题栏左侧彩色条
     for y in padding..padding + title_h {
         for x in padding..padding + 6 {
-            set_px(&mut buf, width, x as i32, y as i32, o.style.accent_color);
+            set_px(&mut canvas.buf, width, x as i32, y as i32, o.style.accent_color);
         }
     }
 
     // 标题
     draw_text(
-        &mut buf,
+        &mut canvas.buf,
         width,
         total_h,
-        &font,
+        canvas.font.as_ref().unwrap(),
         title_size as f32,
         (padding + 18) as i32,
         (padding + title_size) as i32,
@@ -574,13 +580,13 @@ fn render_card(
     let content_x0 = (padding + 6) as i32;
     let content_x1 = width as i32 - padding as i32 - 6;
     for line in &content_lines {
-        let lw = measure_text(&font, line, content_size as f32);
+        let lw = measure_text(canvas.font.as_ref().unwrap(), line, content_size as f32);
         let bx = line_x(o.style.align, lw, content_x0, content_x1);
         draw_text(
-            &mut buf,
+            &mut canvas.buf,
             width,
             total_h,
-            &font,
+            canvas.font.as_ref().unwrap(),
             content_size as f32,
             bx,
             (top + content_size) as i32,
@@ -594,10 +600,10 @@ fn render_card(
     if o.show_footer {
         let foot_y = (total_h - padding - footer_h + 8) as i32;
         draw_text(
-            &mut buf,
+            &mut canvas.buf,
             width,
             total_h,
-            &font,
+            canvas.font.as_ref().unwrap(),
             footer_size as f32,
             padding as i32,
             foot_y + footer_size as i32,
@@ -606,12 +612,12 @@ fn render_card(
         );
         let right_text: &str = o.footer_text.as_deref().unwrap_or("ZGRIC");
         if !right_text.is_empty() {
-            let z_w = measure_text(&font, right_text, footer_size as f32);
+            let z_w = measure_text(canvas.font.as_ref().unwrap(), right_text, footer_size as f32);
             draw_text(
-                &mut buf,
+                &mut canvas.buf,
                 width,
                 total_h,
-                &font,
+                canvas.font.as_ref().unwrap(),
                 footer_size as f32,
                 (width as i32 - padding as i32 - z_w as i32).max(0),
                 foot_y + footer_size as i32,
@@ -621,7 +627,7 @@ fn render_card(
         }
     }
 
-    encode_png(width, total_h, buf).map_err(PyRuntimeError::new_err)
+    canvas.to_png_bytes().map_err(PyRuntimeError::new_err)
 }
 
 /// 渲染榜单/列表图片，返回 PNG bytes
@@ -720,28 +726,30 @@ fn render_list(
     let title_h = 56u32;
     let row_h = line_h + 4;
     let total_h = padding * 2 + title_h + parsed.len() as u32 * row_h + 10;
-    let mut buf = vec![0u8; (width * total_h * 4) as usize];
+    let mut canvas = canvas::Canvas::new_raw(width, total_h, [0, 0, 0, 0], None)
+        .map_err(PyRuntimeError::new_err)?;
+    canvas.font = Some(font);
 
     // 背景（默认同卡片：渐变）
-    fill_bg(&mut buf, width, total_h, &o.style, [248, 250, 255, 255]);
+    fill_bg(&mut canvas.buf, width, total_h, &o.style, [248, 250, 255, 255]);
     if o.style.bg_color.is_none() && o.style.bg_gradient.is_none() {
         let mut g = o.style;
         g.bg_gradient = Some(([248, 250, 255, 255], [255, 255, 245, 255]));
-        fill_bg(&mut buf, width, total_h, &g, [248, 250, 255, 255]);
+        fill_bg(&mut canvas.buf, width, total_h, &g, [248, 250, 255, 255]);
     }
-    draw_border(&mut buf, width, total_h, &o.style);
+    draw_border(&mut canvas.buf, width, total_h, &o.style);
 
     // 标题区：左侧彩色条 + 标题
     for y in padding..padding + title_h {
         for x in padding..padding + 6 {
-            set_px(&mut buf, width, x as i32, y as i32, o.style.accent_color);
+            set_px(&mut canvas.buf, width, x as i32, y as i32, o.style.accent_color);
         }
     }
     draw_text(
-        &mut buf,
+        &mut canvas.buf,
         width,
         total_h,
-        &font,
+        canvas.font.as_ref().unwrap(),
         title_size as f32,
         (padding + 18) as i32,
         (padding + title_size) as i32,
@@ -763,19 +771,19 @@ fn render_list(
         if item.highlight {
             for y in row_top..row_bot as i32 {
                 for x in x0..x1 {
-                    set_px(&mut buf, width, x, y, o.style.highlight_bg);
+                    set_px(&mut canvas.buf, width, x, y, o.style.highlight_bg);
                 }
             }
         }
 
         // 序号
         if let Some(r) = &item.rank {
-            let rw = measure_text(&font, r, item_size as f32);
+            let rw = measure_text(canvas.font.as_ref().unwrap(), r, item_size as f32);
             draw_text(
-                &mut buf,
+                &mut canvas.buf,
                 width,
                 total_h,
-                &font,
+                canvas.font.as_ref().unwrap(),
                 item_size as f32,
                 (x0 + rank_w) as i32 - rw as i32,
                 baseline,
@@ -787,10 +795,10 @@ fn render_list(
         // 名称（左对齐，跳过序号区）
         let name_x = x0 + rank_w;
         draw_text(
-            &mut buf,
+            &mut canvas.buf,
             width,
             total_h,
-            &font,
+            canvas.font.as_ref().unwrap(),
             item_size as f32,
             name_x,
             baseline,
@@ -804,12 +812,12 @@ fn render_list(
 
         // 数值（右对齐）
         if !item.value.is_empty() {
-            let vw = measure_text(&font, &item.value, item_size as f32);
+            let vw = measure_text(canvas.font.as_ref().unwrap(), &item.value, item_size as f32);
             draw_text(
-                &mut buf,
+                &mut canvas.buf,
                 width,
                 total_h,
-                &font,
+                canvas.font.as_ref().unwrap(),
                 item_size as f32,
                 (x1 as f32 - vw).max(name_x as f32) as i32,
                 baseline,
@@ -821,13 +829,224 @@ fn render_list(
         top += row_h;
     }
 
-    encode_png(width, total_h, buf).map_err(PyRuntimeError::new_err)
+    canvas.to_png_bytes().map_err(PyRuntimeError::new_err)
+}
+
+// ---------------------------------------------------------------- 图像处理（第二层）
+
+fn decode_img(data: &[u8]) -> Result<image::DynamicImage, String> {
+    image::load_from_memory(data).map_err(|e| format!("图片解码失败: {e}"))
+}
+
+fn encode_png_img(img: &image::DynamicImage) -> Result<Vec<u8>, String> {
+    let mut out: Vec<u8> = Vec::new();
+    {
+        let mut cursor = std::io::Cursor::new(&mut out);
+        img.write_to(&mut cursor, image::ImageFormat::Png)
+            .map_err(|e| format!("PNG 编码失败: {e}"))?;
+    }
+    Ok(out)
+}
+
+/// 等比缩放图片（默认保持比例，LANCZOS），返回 PNG bytes
+#[pyfunction]
+#[pyo3(signature = (img_bytes, width, height, keep_ratio=true))]
+fn image_resize(img_bytes: &[u8], width: u32, height: u32, keep_ratio: bool) -> PyResult<Vec<u8>> {
+    let img = decode_img(img_bytes).map_err(PyRuntimeError::new_err)?;
+    if width == 0 || height == 0 {
+        return Err(PyRuntimeError::new_err("width/height 必须大于 0"));
+    }
+    let (ow, oh) = (img.width(), img.height());
+    let (nw, nh) = if keep_ratio {
+        let ratio = (width as f32 / ow as f32).min(height as f32 / oh as f32);
+        ((ow as f32 * ratio).round().max(1.0) as u32, (oh as f32 * ratio).round().max(1.0) as u32)
+    } else {
+        (width, height)
+    };
+    let resized = image::imageops::resize(&img, nw, nh, image::imageops::FilterType::Lanczos3);
+    encode_png_img(&image::DynamicImage::ImageRgba8(resized)).map_err(PyRuntimeError::new_err)
+}
+
+/// 16:9 居中裁剪，返回 PNG bytes
+#[pyfunction]
+fn image_crop_16_9(img_bytes: &[u8]) -> PyResult<Vec<u8>> {
+    let img = decode_img(img_bytes).map_err(PyRuntimeError::new_err)?;
+    let (w, h) = (img.width(), img.height());
+    if w == 0 || h == 0 {
+        return Err(PyRuntimeError::new_err("图片尺寸非法"));
+    }
+    let target_h = (w as f32 * 9.0 / 16.0).round() as u32;
+    let (crop_h, crop_w) = if target_h <= h {
+        (target_h, w)
+    } else {
+        let target_w = (h as f32 * 16.0 / 9.0).round() as u32;
+        (h, target_w)
+    };
+    let x = (w - crop_w) / 2;
+    let y = (h - crop_h) / 2;
+    let cropped = img.crop_imm(x, y, crop_w, crop_h);
+    encode_png_img(&cropped).map_err(PyRuntimeError::new_err)
+}
+
+/// 圆形裁剪（头像），size 为输出边长，四角透明，返回 PNG bytes
+#[pyfunction]
+#[pyo3(signature = (img_bytes, size=256))]
+fn image_circle_crop(img_bytes: &[u8], size: u32) -> PyResult<Vec<u8>> {
+    let img = decode_img(img_bytes).map_err(PyRuntimeError::new_err)?;
+    if size == 0 {
+        return Err(PyRuntimeError::new_err("size 必须大于 0"));
+    }
+    let square = image::imageops::resize(
+        &img,
+        size,
+        size,
+        image::imageops::FilterType::Lanczos3,
+    );
+    let rgba = square.to_rgba8();
+    let mut out = image::RgbaImage::new(size, size);
+    let r = (size as f32 / 2.0).round() as i32;
+    let cx = r;
+    let cy = r;
+    for y in 0..size {
+        for x in 0..size {
+            let dx = x as i32 - cx;
+            let dy = y as i32 - cy;
+            if dx * dx + dy * dy <= r * r {
+                out.put_pixel(x, y, *rgba.get_pixel(x, y));
+            }
+        }
+    }
+    encode_png_img(&image::DynamicImage::ImageRgba8(out)).map_err(PyRuntimeError::new_err)
+}
+
+/// 圆角裁剪，返回 PNG bytes
+#[pyfunction]
+#[pyo3(signature = (img_bytes, radius=16))]
+fn image_round_corners(img_bytes: &[u8], radius: u32) -> PyResult<Vec<u8>> {
+    let img = decode_img(img_bytes).map_err(PyRuntimeError::new_err)?;
+    let rgba = img.to_rgba8();
+    let (w, h) = (rgba.width(), rgba.height());
+    let r = (radius as i32).min((w as i32 / 2).max(0)).min((h as i32 / 2).max(0));
+    let mut out = rgba.clone();
+    for y in 0..h {
+        for x in 0..w {
+            if !in_rounded(x as i32, y as i32, 0, 0, w as i32, h as i32, r) {
+                out.put_pixel(x, y, image::Rgba([0, 0, 0, 0]));
+            }
+        }
+    }
+    encode_png_img(&image::DynamicImage::ImageRgba8(out)).map_err(PyRuntimeError::new_err)
+}
+
+/// 高斯模糊，radius 为 sigma，返回 PNG bytes
+#[pyfunction]
+#[pyo3(signature = (img_bytes, radius=4.0))]
+fn image_blur(img_bytes: &[u8], radius: f32) -> PyResult<Vec<u8>> {
+    let img = decode_img(img_bytes).map_err(PyRuntimeError::new_err)?;
+    if radius <= 0.0 {
+        return encode_png_img(&img).map_err(PyRuntimeError::new_err);
+    }
+    let blurred = image::imageops::blur(&img, radius);
+    encode_png_img(&image::DynamicImage::ImageRgba8(blurred)).map_err(PyRuntimeError::new_err)
+}
+
+/// 翻转：direction 为 "horizontal" / "vertical"，返回 PNG bytes
+#[pyfunction]
+#[pyo3(signature = (img_bytes, direction="horizontal"))]
+fn image_flip(img_bytes: &[u8], direction: &str) -> PyResult<Vec<u8>> {
+    let img = decode_img(img_bytes).map_err(PyRuntimeError::new_err)?;
+    let out = if direction.eq_ignore_ascii_case("vertical") {
+        image::imageops::flip_vertical(&img)
+    } else {
+        image::imageops::flip_horizontal(&img)
+    };
+    encode_png_img(&out).map_err(PyRuntimeError::new_err)
+}
+
+/// 旋转：angle 为 90/180/270（逆时针），返回 PNG bytes
+#[pyfunction]
+#[pyo3(signature = (img_bytes, angle=90))]
+fn image_rotate(img_bytes: &[u8], angle: i32) -> PyResult<Vec<u8>> {
+    let img = decode_img(img_bytes).map_err(PyRuntimeError::new_err)?;
+    let out = match angle.rem_euclid(360) {
+        90 => image::imageops::rotate90(&img),
+        180 => image::imageops::rotate180(&img),
+        270 => image::imageops::rotate270(&img),
+        _ => img,
+    };
+    encode_png_img(&out).map_err(PyRuntimeError::new_err)
+}
+
+/// 灰度化，返回 PNG bytes
+#[pyfunction]
+fn image_gray(img_bytes: &[u8]) -> PyResult<Vec<u8>> {
+    let img = decode_img(img_bytes).map_err(PyRuntimeError::new_err)?;
+    let out = image::imageops::grayscale(&img);
+    encode_png_img(&image::DynamicImage::ImageLuma8(out)).map_err(PyRuntimeError::new_err)
+}
+
+/// 对比度调整，factor > 1 增强 / < 1 减弱，返回 PNG bytes
+#[pyfunction]
+#[pyo3(signature = (img_bytes, factor=1.5))]
+fn image_contrast(img_bytes: &[u8], factor: f32) -> PyResult<Vec<u8>> {
+    let img = decode_img(img_bytes).map_err(PyRuntimeError::new_err)?;
+    let out = image::imageops::contrast(&img, factor);
+    encode_png_img(&image::DynamicImage::ImageRgba8(out)).map_err(PyRuntimeError::new_err)
+}
+
+/// 将前景图合成到背景图 (x, y) 处（alpha 混合），返回 PNG bytes
+#[pyfunction]
+#[pyo3(signature = (bg_bytes, fg_bytes, x=0, y=0))]
+fn image_overlay(bg_bytes: &[u8], fg_bytes: &[u8], x: i32, y: i32) -> PyResult<Vec<u8>> {
+    let bg = decode_img(bg_bytes).map_err(PyRuntimeError::new_err)?.to_rgba8();
+    let fg = decode_img(fg_bytes).map_err(PyRuntimeError::new_err)?.to_rgba8();
+    let (bw, bh) = (bg.width(), bg.height());
+    let (fw, fh) = (fg.width(), fg.height());
+    let mut out = bg.clone();
+    for j in 0..fh {
+        for i in 0..fw {
+            let px = x + i as i32;
+            let py = y + j as i32;
+            if px < 0 || py < 0 || px >= bw as i32 || py >= bh as i32 {
+                continue;
+            }
+            let f = fg.get_pixel(i, j);
+            let a = f[3] as u32;
+            if a == 0 {
+                continue;
+            }
+            let dst = out.get_pixel(px as u32, py as u32);
+            let mut c = [0u8; 4];
+            if a >= 255 {
+                c = [f[0], f[1], f[2], 255];
+            } else {
+                let inv = 255 - a;
+                for k in 0..3 {
+                    c[k] = ((dst[k] as u32 * inv + f[k] as u32 * a) / 255) as u8;
+                }
+                c[3] = 255;
+            }
+            out.put_pixel(px as u32, py as u32, image::Rgba(c));
+        }
+    }
+    encode_png_img(&image::DynamicImage::ImageRgba8(out)).map_err(PyRuntimeError::new_err)
 }
 
 #[pymodule]
 fn zcbot_render(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_class::<canvas::Canvas>()?;
     m.add_function(wrap_pyfunction!(render_text, m)?)?;
     m.add_function(wrap_pyfunction!(render_card, m)?)?;
     m.add_function(wrap_pyfunction!(render_list, m)?)?;
+    m.add_function(wrap_pyfunction!(image_resize, m)?)?;
+    m.add_function(wrap_pyfunction!(image_crop_16_9, m)?)?;
+    m.add_function(wrap_pyfunction!(image_circle_crop, m)?)?;
+    m.add_function(wrap_pyfunction!(image_round_corners, m)?)?;
+    m.add_function(wrap_pyfunction!(image_blur, m)?)?;
+    m.add_function(wrap_pyfunction!(image_flip, m)?)?;
+    m.add_function(wrap_pyfunction!(image_rotate, m)?)?;
+    m.add_function(wrap_pyfunction!(image_gray, m)?)?;
+    m.add_function(wrap_pyfunction!(image_contrast, m)?)?;
+    m.add_function(wrap_pyfunction!(image_overlay, m)?)?;
     Ok(())
 }

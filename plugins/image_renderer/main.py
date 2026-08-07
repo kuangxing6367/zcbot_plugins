@@ -555,3 +555,330 @@ def _send_image(ctx, event, img_or_bytes):
                 os.unlink(img_path)
             except Exception:
                 pass
+
+
+# ---------------------------------------------------------------- Canvas（原生优先，PIL 回退）
+
+class _CanvasPIL:
+    """PIL 版链式 Canvas，接口与原生 Canvas 完全一致（回退用）"""
+
+    def __init__(self, width, height, bg_color=None, font_path=None):
+        from PIL import Image, ImageDraw
+        self._width = int(width)
+        self._height = int(height)
+        self._bg = _parse_color(bg_color, (0, 0, 0, 0))
+        self._img = Image.new("RGBA", (self._width, self._height), self._bg)
+        self._draw = ImageDraw.Draw(self._img)
+        self._font_path = font_path
+
+    def _font(self, size, bold=False):
+        if not self._font_path:
+            raise ValueError("未设置字体，请在 Canvas.new 传入 font_path")
+        from PIL import ImageFont
+        if os.path.isfile(self._font_path):
+            return ImageFont.truetype(self._font_path, int(size))
+        return _get_font(int(size), bold)
+
+    def get_size(self):
+        return (self._width, self._height)
+
+    def rect(self, x0, y0, x1, y1, radius=0, fill=None, outline=None, width=1):
+        box = [x0, y0, x1, y1]
+        fill_c = _parse_color(fill)
+        outline_c = _parse_color(outline)
+        if radius > 0:
+            self._draw.rounded_rectangle(box, radius=radius, fill=fill_c, outline=outline_c, width=int(width))
+        else:
+            self._draw.rectangle(box, fill=fill_c, outline=outline_c, width=int(width))
+        return self
+
+    def line(self, points, color, width=1):
+        c = _parse_color(color)
+        self._draw.line([(int(p[0]), int(p[1])) for p in points], fill=c, width=int(width))
+        return self
+
+    def circle(self, cx, cy, r, fill=None, outline=None, width=1):
+        box = [cx - r, cy - r, cx + r, cy + r]
+        self._draw.ellipse(box, fill=_parse_color(fill), outline=_parse_color(outline), width=int(width))
+        return self
+
+    def ellipse(self, x0, y0, x1, y1, fill=None, outline=None, width=1):
+        self._draw.ellipse([x0, y0, x1, y1], fill=_parse_color(fill), outline=_parse_color(outline), width=int(width))
+        return self
+
+    def gradient_rect(self, x0, y0, x1, y1, color_a, color_b, direction="vertical"):
+        a = _parse_color(color_a, (0, 0, 0, 255))
+        b = _parse_color(color_b, (0, 0, 0, 255))
+        w, h = x1 - x0, y1 - y0
+        if direction == "horizontal":
+            for x in range(max(0, x0), min(self._width, x1)):
+                t = (x - x0) / max(1, w - 1)
+                c = tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3)) + (255,)
+                self._draw.line([(x, y0), (x, y1)], fill=c)
+        else:
+            for y in range(max(0, y0), min(self._height, y1)):
+                t = (y - y0) / max(1, h - 1)
+                c = tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3)) + (255,)
+                self._draw.line([(x0, y), (x1, y)], fill=c)
+        return self
+
+    def text(self, x, y, text, font_size=20, color=None, align="left", wrap_width=0):
+        font = self._font(int(font_size))
+        c = _parse_color(color, (40, 40, 60, 255))
+        lines = []
+        if wrap_width > 0:
+            from PIL import ImageFont
+            avg = font.getlength("中")
+            chars = max(1, int(wrap_width / max(1, avg)))
+            for para in str(text).split("\n"):
+                for i in range(0, len(para), chars):
+                    lines.append(para[i:i + chars])
+        else:
+            lines = str(text).split("\n")
+        line_h = max(1, round(int(font_size) * 1.35))
+        yy = int(y)
+        for line in lines:
+            lw = font.getlength(line)
+            if align == "center":
+                xx = x + max(0, wrap_width - lw) / 2 if wrap_width > 0 else x
+            elif align == "right":
+                xx = x + (wrap_width - lw) if wrap_width > 0 else x
+            else:
+                xx = x
+            self._draw.text((xx, yy), line, fill=c, font=font)
+            yy += line_h
+        return self
+
+    def text_metrics(self, text, font_size, wrap_width=0):
+        font = self._font(int(font_size))
+        if wrap_width > 0:
+            avg = font.getlength("中")
+            chars = max(1, int(wrap_width / max(1, avg)))
+            lines = []
+            for para in str(text).split("\n"):
+                for i in range(0, len(para), chars):
+                    lines.append(para[i:i + chars])
+        else:
+            lines = str(text).split("\n")
+        line_h = max(1, round(int(font_size) * 1.35))
+        w = max(font.getlength(ln) for ln in lines) if lines else 0
+        return (int(w), int(len(lines) * line_h))
+
+    def paste(self, image_bytes, x, y, width=None, height=None):
+        from PIL import Image as PILImage
+        from io import BytesIO
+        img = PILImage.open(BytesIO(bytes(image_bytes))).convert("RGBA")
+        if width is not None and height is not None:
+            img = img.resize((int(width), int(height)), PILImage.Resampling.LANCZOS)
+        self._img.alpha_composite(img, (int(x), int(y)))
+        return self
+
+    def blur(self, radius):
+        from PIL import ImageDraw, ImageFilter
+        self._img = self._img.filter(ImageFilter.GaussianBlur(float(radius)))
+        self._draw = ImageDraw.Draw(self._img)
+        return self
+
+    def alpha_overlay(self, x0, y0, x1, y1, color, alpha):
+        from PIL import Image, ImageDraw
+        c = list(_parse_color(color, (0, 0, 0, 255)))
+        c[3] = int(alpha)
+        ov = Image.new("RGBA", (self._width, self._height), tuple(c))
+        self._img = Image.alpha_composite(self._img, ov)
+        self._draw = ImageDraw.Draw(self._img)
+        return self
+
+    def to_png(self):
+        from io import BytesIO
+        buf = BytesIO()
+        self._img.save(buf, format="PNG")
+        return buf.getvalue()
+
+
+def _get_native_or_pil_canvas(width, height, bg_color=None, font_path=None):
+    """返回原生 Canvas 或 PIL 回退 Canvas"""
+    if _NATIVE is not None and hasattr(_NATIVE, "Canvas"):
+        try:
+            return _NATIVE.Canvas(int(width), int(height), bg_color, font_path)
+        except Exception as e:
+            logger.warning(f"[image_renderer] 原生 Canvas 创建失败，回退 PIL: {e}")
+    return _CanvasPIL(width, height, bg_color, font_path)
+
+
+def image_resize(img_bytes, width, height, keep_ratio=True):
+    """等比缩放图片，返回 PNG bytes（原生优先，PIL 回退）"""
+    if _NATIVE is not None and hasattr(_NATIVE, "image_resize"):
+        try:
+            return _NATIVE.image_resize(bytes(img_bytes), int(width), int(height), bool(keep_ratio))
+        except Exception as e:
+            logger.warning(f"[image_renderer] 原生 image_resize 失败，回退 PIL: {e}")
+    from PIL import Image as PILImage
+    from io import BytesIO
+    img = PILImage.open(BytesIO(bytes(img_bytes))).convert("RGBA")
+    if keep_ratio:
+        ratio = min(width / img.width, height / img.height)
+        nw, nh = max(1, round(img.width * ratio)), max(1, round(img.height * ratio))
+    else:
+        nw, nh = int(width), int(height)
+    img = img.resize((nw, nh), PILImage.Resampling.LANCZOS)
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def image_crop_16_9(img_bytes):
+    """16:9 居中裁剪，返回 PNG bytes"""
+    if _NATIVE is not None and hasattr(_NATIVE, "image_crop_16_9"):
+        try:
+            return _NATIVE.image_crop_16_9(bytes(img_bytes))
+        except Exception as e:
+            logger.warning(f"[image_renderer] 原生 image_crop_16_9 失败，回退 PIL: {e}")
+    from PIL import Image as PILImage
+    from io import BytesIO
+    img = PILImage.open(BytesIO(bytes(img_bytes))).convert("RGBA")
+    w, h = img.size
+    target_h = round(w * 9 / 16)
+    if target_h <= h:
+        crop = img.crop((0, (h - target_h) // 2, w, (h - target_h) // 2 + target_h))
+    else:
+        target_w = round(h * 16 / 9)
+        crop = img.crop(((w - target_w) // 2, 0, (w - target_w) // 2 + target_w, h))
+    buf = BytesIO()
+    crop.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def image_circle_crop(img_bytes, size=256):
+    """圆形裁剪（头像），返回 PNG bytes"""
+    if _NATIVE is not None and hasattr(_NATIVE, "image_circle_crop"):
+        try:
+            return _NATIVE.image_circle_crop(bytes(img_bytes), int(size))
+        except Exception as e:
+            logger.warning(f"[image_renderer] 原生 image_circle_crop 失败，回退 PIL: {e}")
+    from PIL import Image as PILImage, ImageDraw
+    from io import BytesIO
+    img = PILImage.open(BytesIO(bytes(img_bytes))).convert("RGBA").resize(
+        (int(size), int(size)), PILImage.Resampling.LANCZOS)
+    mask = PILImage.new("L", (int(size), int(size)), 0)
+    ImageDraw.Draw(mask).ellipse((0, 0, int(size), int(size)), fill=255)
+    out = PILImage.new("RGBA", (int(size), int(size)), (0, 0, 0, 0))
+    out.paste(img, (0, 0), mask)
+    buf = BytesIO()
+    out.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def image_round_corners(img_bytes, radius=16):
+    """圆角裁剪，返回 PNG bytes"""
+    if _NATIVE is not None and hasattr(_NATIVE, "image_round_corners"):
+        try:
+            return _NATIVE.image_round_corners(bytes(img_bytes), int(radius))
+        except Exception as e:
+            logger.warning(f"[image_renderer] 原生 image_round_corners 失败，回退 PIL: {e}")
+    from PIL import Image as PILImage, ImageDraw
+    from io import BytesIO
+    img = PILImage.open(BytesIO(bytes(img_bytes))).convert("RGBA")
+    w, h = img.size
+    mask = PILImage.new("L", (w, h), 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, w - 1, h - 1), radius=int(radius), fill=255)
+    out = PILImage.new("RGBA", (w, h), (0, 0, 0, 0))
+    out.paste(img, (0, 0), mask)
+    buf = BytesIO()
+    out.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def image_blur(img_bytes, radius=4.0):
+    """高斯模糊，返回 PNG bytes"""
+    if _NATIVE is not None and hasattr(_NATIVE, "image_blur"):
+        try:
+            return _NATIVE.image_blur(bytes(img_bytes), float(radius))
+        except Exception as e:
+            logger.warning(f"[image_renderer] 原生 image_blur 失败，回退 PIL: {e}")
+    from PIL import Image as PILImage, ImageFilter
+    from io import BytesIO
+    img = PILImage.open(BytesIO(bytes(img_bytes))).convert("RGBA").filter(
+        ImageFilter.GaussianBlur(float(radius)))
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def image_flip(img_bytes, direction="horizontal"):
+    """翻转图片，返回 PNG bytes"""
+    if _NATIVE is not None and hasattr(_NATIVE, "image_flip"):
+        try:
+            return _NATIVE.image_flip(bytes(img_bytes), direction)
+        except Exception as e:
+            logger.warning(f"[image_renderer] 原生 image_flip 失败，回退 PIL: {e}")
+    from PIL import Image as PILImage
+    from io import BytesIO
+    img = PILImage.open(BytesIO(bytes(img_bytes))).convert("RGBA")
+    img = img.transpose(PILImage.Transpose.FLIP_LEFT_RIGHT if direction == "horizontal" else PILImage.Transpose.FLIP_TOP_BOTTOM)
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def image_rotate(img_bytes, angle=90):
+    """旋转图片，返回 PNG bytes"""
+    if _NATIVE is not None and hasattr(_NATIVE, "image_rotate"):
+        try:
+            return _NATIVE.image_rotate(bytes(img_bytes), int(angle))
+        except Exception as e:
+            logger.warning(f"[image_renderer] 原生 image_rotate 失败，回退 PIL: {e}")
+    from PIL import Image as PILImage
+    from io import BytesIO
+    img = PILImage.open(BytesIO(bytes(img_bytes))).convert("RGBA")
+    img = img.rotate(-int(angle), expand=True, resample=PILImage.Resampling.BICUBIC)
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def image_gray(img_bytes):
+    """灰度化，返回 PNG bytes"""
+    if _NATIVE is not None and hasattr(_NATIVE, "image_gray"):
+        try:
+            return _NATIVE.image_gray(bytes(img_bytes))
+        except Exception as e:
+            logger.warning(f"[image_renderer] 原生 image_gray 失败，回退 PIL: {e}")
+    from PIL import Image as PILImage
+    from io import BytesIO
+    img = PILImage.open(BytesIO(bytes(img_bytes))).convert("L").convert("RGBA")
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def image_contrast(img_bytes, factor=1.5):
+    """对比度调整，返回 PNG bytes"""
+    if _NATIVE is not None and hasattr(_NATIVE, "image_contrast"):
+        try:
+            return _NATIVE.image_contrast(bytes(img_bytes), float(factor))
+        except Exception as e:
+            logger.warning(f"[image_renderer] 原生 image_contrast 失败，回退 PIL: {e}")
+    from PIL import Image as PILImage, ImageEnhance
+    from io import BytesIO
+    img = PILImage.open(BytesIO(bytes(img_bytes))).convert("RGBA")
+    img = ImageEnhance.Contrast(img).enhance(float(factor))
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def image_overlay(bg_bytes, fg_bytes, x=0, y=0):
+    """将前景图合成到背景图 (x,y)，返回 PNG bytes"""
+    if _NATIVE is not None and hasattr(_NATIVE, "image_overlay"):
+        try:
+            return _NATIVE.image_overlay(bytes(bg_bytes), bytes(fg_bytes), int(x), int(y))
+        except Exception as e:
+            logger.warning(f"[image_renderer] 原生 image_overlay 失败，回退 PIL: {e}")
+    from PIL import Image as PILImage
+    from io import BytesIO
+    bg = PILImage.open(BytesIO(bytes(bg_bytes))).convert("RGBA")
+    fg = PILImage.open(BytesIO(bytes(fg_bytes))).convert("RGBA")
+    bg.alpha_composite(fg, (int(x), int(y)))
+    buf = BytesIO()
+    bg.save(buf, format="PNG")
+    return buf.getvalue()
