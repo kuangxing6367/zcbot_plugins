@@ -11,3 +11,6 @@ __pycache__/
 *.tmp
 .DS_Store
 Thumbs.db
+
+# Rust 编译产物
+target/

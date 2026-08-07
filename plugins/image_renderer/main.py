@@ -153,41 +153,87 @@ def handle_render_text(event, match):
 
 # ---------------------------------------------------------------- 渲染（原生优先，PIL 回退）
 
-def _render_card_image(title, content, width=600, padding=30):
+def _parse_color(c, default=None):
+    """颜色归一化：'#RRGGBB' / '#RRGGBBAA' / [r,g,b] / [r,g,b,a] → RGBA 元组"""
+    if c is None:
+        return default
+    if isinstance(c, str):
+        h = c.lstrip('#')
+        if len(h) == 6:
+            return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16), 255)
+        if len(h) == 8:
+            return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16), int(h[6:8], 16))
+        raise ValueError(f"颜色格式非法: {c}")
+    seq = tuple(int(x) for x in c)
+    if len(seq) == 3:
+        return seq + (255,)
+    if len(seq) == 4:
+        return seq
+    raise ValueError("颜色序列长度必须为 3 或 4")
+
+
+def _gradient_row(top, bottom, y, height):
+    """渐变第 y 行的颜色（与原生版 lerp 一致）"""
+    t = y / max(1, height - 1)
+    return tuple(int(top[i] + (bottom[i] - top[i]) * t) for i in range(3)) + (255,)
+
+
+def _render_card_image(title, content, width=600, padding=30, options=None):
     """渲染信息卡片。原生可用返回 PNG bytes，否则返回 PIL Image"""
     if _NATIVE is not None:
         font = _find_font_path()
         if font:
             try:
                 ts = datetime.now().strftime("%Y-%m-%d %H:%M")
-                return _NATIVE.render_card(title, content, font, ts, width, padding)
+                return _NATIVE.render_card(title, content, font, ts, width, padding, options)
             except Exception as e:
                 logger.warning(f"[image_renderer] 原生 render_card 失败，回退 PIL: {e}")
-    return _render_card_image_pil(title, content, width, padding)
+    return _render_card_image_pil(title, content, width, padding, options)
 
 
-def _render_text_image(text, width=500, padding=20):
+def _render_text_image(text, width=500, padding=20, options=None):
     """将文字渲染为图片。原生可用返回 PNG bytes，否则返回 PIL Image"""
     if _NATIVE is not None:
         font = _find_font_path()
         if font:
             try:
-                return _NATIVE.render_text(text, font, width, 24, padding)
+                return _NATIVE.render_text(text, font, width, 24, padding, options)
             except Exception as e:
                 logger.warning(f"[image_renderer] 原生 render_text 失败，回退 PIL: {e}")
-    return _render_text_image_pil(text, width, padding)
+    return _render_text_image_pil(text, width, padding, options)
 
 
 # ---------------------------------------------------------------- PIL 回退实现
 
-def _render_card_image_pil(title, content, width=600, padding=30):
-    """PIL 版信息卡片渲染（与原生版布局一致）"""
+def _render_card_image_pil(title, content, width=600, padding=30, options=None):
+    """PIL 版信息卡片渲染（与原生版布局一致，支持相同 options）"""
     from PIL import Image, ImageDraw
 
-    title_font = _get_font(28, bold=True)
-    content_font = _get_font(20)
+    options = options or {}
+    padding = int(options.get('padding', padding))
+    title_size = int(options.get('title_size', 28))
+    content_size = int(options.get('content_size', 20))
+    footer_size = int(options.get('footer_size', 14))
+    line_h = int(options.get('line_height', 0)) or 30
+    align = options.get('align', 'left')
+    radius = int(options.get('radius', 0))
+    border_color = _parse_color(options.get('border_color'))
+    border_width = int(options.get('border_width', 2))
 
-    line_height = 30
+    title_color = _parse_color(options.get('title_color'), (20, 30, 60, 255))
+    content_color = _parse_color(options.get('content_color'), (60, 60, 80, 255))
+    footer_color = _parse_color(options.get('footer_color'), (160, 160, 170, 255))
+    accent_color = _parse_color(options.get('accent_color'), (99, 102, 241, 255))
+    bg_color = _parse_color(options.get('bg_color'))
+    bg_gradient = options.get('bg_gradient')
+    show_footer = bool(options.get('show_footer', True))
+    footer_text = options.get('footer_text', 'ZGRIC')
+
+    title_font = _get_font(title_size, bold=True)
+    content_font = _get_font(content_size)
+    footer_font = _get_font(footer_size)
+
+    line_height = line_h
     content_lines = []
     for line in content.split("\n"):
         if content_font:
@@ -200,44 +246,100 @@ def _render_card_image_pil(title, content, width=600, padding=30):
 
     title_h = 50
     content_h = len(content_lines) * line_height + 20
-    footer_h = 30
+    footer_h = 30 if show_footer else 0
     total_h = padding * 2 + title_h + content_h + footer_h
 
-    img = Image.new("RGBA", (width, total_h), (255, 255, 255, 255))
+    img = Image.new("RGBA", (width, total_h), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
-    for y in range(total_h):
-        ratio = y / total_h
-        r = int(248 + ratio * 7)
-        g = int(250 + ratio * 5)
-        b = int(255 - ratio * 10)
-        draw.line([(0, y), (width, y)], fill=(r, g, b, 255))
+    # 背景：渐变 / 纯色 / 默认
+    gradient = None
+    if bg_gradient:
+        top = _parse_color(bg_gradient[0], (248, 250, 255, 255))
+        bottom = _parse_color(bg_gradient[1], (255, 255, 245, 255))
+        gradient = (top, bottom)
+    elif bg_color is None:
+        gradient = ((248, 250, 255, 255), (255, 255, 245, 255))
+    if gradient:
+        top, bottom = gradient
+        for y in range(total_h):
+            draw.line([(0, y), (width, y)], fill=_gradient_row(top, bottom, y, total_h))
+    else:
+        if radius > 0:
+            draw.rounded_rectangle([0, 0, width - 1, total_h - 1], radius=radius, fill=bg_color)
+        else:
+            draw.rectangle([0, 0, width - 1, total_h - 1], fill=bg_color)
 
-    draw.rectangle([padding, padding, padding + 6, padding + title_h], fill=(99, 102, 241))
+    # 边框
+    if border_color:
+        box = [0, 0, width - 1, total_h - 1]
+        if radius > 0:
+            draw.rounded_rectangle(box, radius=radius, outline=border_color, width=border_width)
+        else:
+            draw.rectangle(box, outline=border_color, width=border_width)
+
+    # 标题栏左侧彩色条
+    draw.rectangle([padding, padding, padding + 6, padding + title_h], fill=accent_color)
+
+    # 标题
     if title_font:
-        draw.text((padding + 18, padding + 4), title, fill=(20, 30, 60), font=title_font)
+        draw.text((padding + 18, padding + 4), title, fill=title_color, font=title_font)
 
+    # 内容（支持对齐）
     y_off = padding + title_h + 10
+    content_x0 = padding + 6
+    content_x1 = width - padding - 6
+    inner_w = content_x1 - content_x0
     if content_font:
         for line in content_lines:
-            draw.text((padding + 6, y_off), line, fill=(60, 60, 80), font=content_font)
+            lw = content_font.getlength(line)
+            if align == 'center':
+                x = content_x0 + max(0, inner_w - lw) / 2
+            elif align == 'right':
+                x = content_x1 - min(lw, inner_w)
+            else:
+                x = content_x0
+            draw.text((x, y_off), line, fill=content_color, font=content_font)
             y_off += line_height
 
-    footer_font = _get_font(14)
-    ts = datetime.now().strftime("%Y-%m-%d %H:%M")
-    if footer_font:
-        draw.text((padding, total_h - padding - footer_h + 8), ts, fill=(160, 160, 170), font=footer_font)
-        draw.text((width - padding - 80, total_h - padding - footer_h + 8), "ZGRIC", fill=(160, 160, 170), font=footer_font)
+    # 页脚：左时间戳，右 footer_text
+    if show_footer and footer_font:
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+        foot_y = total_h - padding - footer_h + 8
+        draw.text((padding, foot_y), ts, fill=footer_color, font=footer_font)
+        if footer_text:
+            footer_text = str(footer_text)
+            tw = footer_font.getlength(footer_text)
+            draw.text((width - padding - tw, foot_y), footer_text, fill=footer_color, font=footer_font)
 
+    # 圆角裁剪（渐变背景时角落透明）
+    if radius > 0 and gradient:
+        mask = Image.new("L", (width, total_h), 0)
+        ImageDraw.Draw(mask).rounded_rectangle(
+            [0, 0, width - 1, total_h - 1], radius=radius, fill=255
+        )
+        img.putalpha(mask)
     return img
 
 
-def _render_text_image_pil(text, width=500, padding=20):
-    """PIL 版文字渲染为图片（与原生版布局一致）"""
+def _render_text_image_pil(text, width=500, padding=20, options=None):
+    """PIL 版文字渲染为图片（与原生版布局一致，支持相同 options）"""
     from PIL import Image, ImageDraw
 
-    font = _get_font(24)
-    line_height = 34
+    options = options or {}
+    padding = int(options.get('padding', padding))
+    font_size = int(options.get('font_size', 24))
+    line_h = int(options.get('line_height', 0)) or max(1, round(font_size * 1.35))
+    align = options.get('align', 'left')
+    radius = int(options.get('radius', 0))
+    border_color = _parse_color(options.get('border_color'))
+    border_width = int(options.get('border_width', 2))
+    text_color = _parse_color(options.get('text_color'), (40, 40, 60, 255))
+    bg_color = _parse_color(options.get('bg_color'), (248, 250, 255, 255))
+    bg_gradient = options.get('bg_gradient')
+
+    font = _get_font(font_size)
+    line_height = line_h
 
     lines = []
     for para in text.split("\n"):
@@ -250,17 +352,53 @@ def _render_text_image_pil(text, width=500, padding=20):
             lines.append(para)
 
     total_h = padding * 2 + len(lines) * line_height + 20
-    img = Image.new("RGBA", (width, total_h), (255, 255, 255, 255))
+    img = Image.new("RGBA", (width, total_h), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
-    draw.rectangle([0, 0, width - 1, total_h - 1], fill=(248, 250, 255, 255))
+    # 背景：渐变 / 纯色
+    gradient = False
+    if bg_gradient:
+        top = _parse_color(bg_gradient[0], bg_color)
+        bottom = _parse_color(bg_gradient[1], bg_color)
+        for y in range(total_h):
+            draw.line([(0, y), (width, y)], fill=_gradient_row(top, bottom, y, total_h))
+        gradient = True
+    else:
+        if radius > 0:
+            draw.rounded_rectangle([0, 0, width - 1, total_h - 1], radius=radius, fill=bg_color)
+        else:
+            draw.rectangle([0, 0, width - 1, total_h - 1], fill=bg_color)
 
+    # 边框
+    if border_color:
+        box = [0, 0, width - 1, total_h - 1]
+        if radius > 0:
+            draw.rounded_rectangle(box, radius=radius, outline=border_color, width=border_width)
+        else:
+            draw.rectangle(box, outline=border_color, width=border_width)
+
+    # 文字（支持对齐）
     y_off = padding
+    inner_w = width - padding * 2
     if font:
         for line in lines:
-            draw.text((padding, y_off), line, fill=(40, 40, 60), font=font)
+            lw = font.getlength(line)
+            if align == 'center':
+                x = padding + max(0, inner_w - lw) / 2
+            elif align == 'right':
+                x = padding + inner_w - min(lw, inner_w)
+            else:
+                x = padding
+            draw.text((x, y_off), line, fill=text_color, font=font)
             y_off += line_height
 
+    # 圆角裁剪
+    if radius > 0 and gradient:
+        mask = Image.new("L", (width, total_h), 0)
+        ImageDraw.Draw(mask).rounded_rectangle(
+            [0, 0, width - 1, total_h - 1], radius=radius, fill=255
+        )
+        img.putalpha(mask)
     return img
 
 

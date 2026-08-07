@@ -1,0 +1,50 @@
+name: build-zcbot-render
+
+# 手动触发：gh workflow run build-zcbot-render.yml
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'plugins/image_renderer/native/**'
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: zcbot_render-windows
+            bin_name: zcbot_render.pyd
+          - os: ubuntu-latest
+            artifact: zcbot_render-linux
+            bin_name: zcbot_render.so
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: PyO3/maturin-action@v1
+        with:
+          working-directory: plugins/image_renderer/native
+          args: --release --out dist
+
+      # 从 wheel 中解出 .pyd / .so 并重命名，方便直接放入 native/bin/<平台>/
+      - name: Extract native lib
+        shell: bash
+        run: |
+          cd plugins/image_renderer/native
+          python -m zipfile -e dist/*.whl extracted
+          lib=$(find extracted -name "zcbot_render*.pyd" -o -name "zcbot_render*.so" | head -n 1)
+          echo "found: $lib"
+          mkdir -p out
+          cp "$lib" "out/${{ matrix.bin_name }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: plugins/image_renderer/native/out/
+          if-no-files-found: error
