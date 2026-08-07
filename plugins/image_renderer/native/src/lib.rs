@@ -18,6 +18,7 @@
 //! 一份扩展兼容 Python 3.9+，由 image_renderer 插件按平台自动加载。
 
 use fontdue::{Font, FontSettings};
+use image::{GenericImage, GenericImageView};
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
@@ -863,8 +864,8 @@ fn image_resize(img_bytes: &[u8], width: u32, height: u32, keep_ratio: bool) -> 
     } else {
         (width, height)
     };
-    let resized = image::imageops::resize(&img, nw, nh, image::imageops::FilterType::Lanczos3);
-    encode_png_img(&image::DynamicImage::ImageRgba8(resized)).map_err(PyRuntimeError::new_err)
+    let resized = img.resize(nw, nh, image::imageops::FilterType::Lanczos3);
+    encode_png_img(&resized).map_err(PyRuntimeError::new_err)
 }
 
 /// 16:9 居中裁剪，返回 PNG bytes
@@ -896,12 +897,7 @@ fn image_circle_crop(img_bytes: &[u8], size: u32) -> PyResult<Vec<u8>> {
     if size == 0 {
         return Err(PyRuntimeError::new_err("size 必须大于 0"));
     }
-    let square = image::imageops::resize(
-        &img,
-        size,
-        size,
-        image::imageops::FilterType::Lanczos3,
-    );
+    let square = img.resize(size, size, image::imageops::FilterType::Lanczos3);
     let rgba = square.to_rgba8();
     let mut out = image::RgbaImage::new(size, size);
     let r = (size as f32 / 2.0).round() as i32;
@@ -946,8 +942,8 @@ fn image_blur(img_bytes: &[u8], radius: f32) -> PyResult<Vec<u8>> {
     if radius <= 0.0 {
         return encode_png_img(&img).map_err(PyRuntimeError::new_err);
     }
-    let blurred = image::imageops::blur(&img, radius);
-    encode_png_img(&image::DynamicImage::ImageRgba8(blurred)).map_err(PyRuntimeError::new_err)
+    let blurred = img.blur(radius);
+    encode_png_img(&blurred).map_err(PyRuntimeError::new_err)
 }
 
 /// 翻转：direction 为 "horizontal" / "vertical"，返回 PNG bytes
@@ -956,9 +952,9 @@ fn image_blur(img_bytes: &[u8], radius: f32) -> PyResult<Vec<u8>> {
 fn image_flip(img_bytes: &[u8], direction: &str) -> PyResult<Vec<u8>> {
     let img = decode_img(img_bytes).map_err(PyRuntimeError::new_err)?;
     let out = if direction.eq_ignore_ascii_case("vertical") {
-        image::imageops::flip_vertical(&img)
+        img.flipv()
     } else {
-        image::imageops::flip_horizontal(&img)
+        img.fliph()
     };
     encode_png_img(&out).map_err(PyRuntimeError::new_err)
 }
@@ -969,9 +965,9 @@ fn image_flip(img_bytes: &[u8], direction: &str) -> PyResult<Vec<u8>> {
 fn image_rotate(img_bytes: &[u8], angle: i32) -> PyResult<Vec<u8>> {
     let img = decode_img(img_bytes).map_err(PyRuntimeError::new_err)?;
     let out = match angle.rem_euclid(360) {
-        90 => image::imageops::rotate90(&img),
-        180 => image::imageops::rotate180(&img),
-        270 => image::imageops::rotate270(&img),
+        90 => img.rotate90(),
+        180 => img.rotate180(),
+        270 => img.rotate270(),
         _ => img,
     };
     encode_png_img(&out).map_err(PyRuntimeError::new_err)
@@ -981,8 +977,8 @@ fn image_rotate(img_bytes: &[u8], angle: i32) -> PyResult<Vec<u8>> {
 #[pyfunction]
 fn image_gray(img_bytes: &[u8]) -> PyResult<Vec<u8>> {
     let img = decode_img(img_bytes).map_err(PyRuntimeError::new_err)?;
-    let out = image::imageops::grayscale(&img);
-    encode_png_img(&image::DynamicImage::ImageLuma8(out)).map_err(PyRuntimeError::new_err)
+    let out = img.grayscale();
+    encode_png_img(&out).map_err(PyRuntimeError::new_err)
 }
 
 /// 对比度调整，factor > 1 增强 / < 1 减弱，返回 PNG bytes
@@ -990,8 +986,8 @@ fn image_gray(img_bytes: &[u8]) -> PyResult<Vec<u8>> {
 #[pyo3(signature = (img_bytes, factor=1.5))]
 fn image_contrast(img_bytes: &[u8], factor: f32) -> PyResult<Vec<u8>> {
     let img = decode_img(img_bytes).map_err(PyRuntimeError::new_err)?;
-    let out = image::imageops::contrast(&img, factor);
-    encode_png_img(&image::DynamicImage::ImageRgba8(out)).map_err(PyRuntimeError::new_err)
+    let out = img.contrast(factor);
+    encode_png_img(&out).map_err(PyRuntimeError::new_err)
 }
 
 /// 将前景图合成到背景图 (x, y) 处（alpha 混合），返回 PNG bytes

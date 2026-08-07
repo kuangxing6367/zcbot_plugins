@@ -10,7 +10,7 @@
 //! 所有绘制方法返回 self，可链式调用；最后调用 to_png() 输出。
 
 use fontdue::Font;
-use image::{imageops, RgbaImage};
+use image::{imageops, GenericImageView, RgbaImage};
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use pyo3::types::PyAny;
@@ -154,8 +154,8 @@ impl Canvas {
 
     /// 圆角矩形：fill 填充色 / outline 描边色 / width 描边宽度 / radius 圆角半径
     #[pyo3(signature = (x0, y0, x1, y1, radius=0, fill=None, outline=None, width=1))]
-    fn rect(
-        mut slf: PyRefMut<'_, Self>,
+    fn rect<'py>(
+        mut slf: PyRefMut<'py, Self>,
         x0: i32,
         y0: i32,
         x1: i32,
@@ -164,7 +164,7 @@ impl Canvas {
         fill: Option<&Bound<'_, PyAny>>,
         outline: Option<&Bound<'_, PyAny>>,
         width: u32,
-    ) -> PyResult<PyRefMut<'_, Self>> {
+    ) -> PyResult<PyRefMut<'py, Self>> {
         let w = slf.width as i32;
         let h = slf.height as i32;
         let x0 = x0.max(0);
@@ -206,12 +206,12 @@ impl Canvas {
 
     /// 折线：points = [[x,y], ...]，color 描边色，width 线宽
     #[pyo3(signature = (points, color, width=1))]
-    fn line(
-        mut slf: PyRefMut<'_, Self>,
+    fn line<'py>(
+        mut slf: PyRefMut<'py, Self>,
         points: Vec<Vec<i64>>,
         color: &Bound<'_, PyAny>,
         width: u32,
-    ) -> PyResult<PyRefMut<'_, Self>> {
+    ) -> PyResult<PyRefMut<'py, Self>> {
         let c = parse_color(color)?.ok_or_else(|| PyRuntimeError::new_err("line 需要颜色"))?;
         if points.len() < 2 {
             return Ok(slf);
@@ -234,15 +234,15 @@ impl Canvas {
 
     /// 圆形：cx,cy 圆心，r 半径，fill 填充 / outline 描边
     #[pyo3(signature = (cx, cy, r, fill=None, outline=None, width=1))]
-    fn circle(
-        mut slf: PyRefMut<'_, Self>,
+    fn circle<'py>(
+        mut slf: PyRefMut<'py, Self>,
         cx: i32,
         cy: i32,
         r: i32,
         fill: Option<&Bound<'_, PyAny>>,
         outline: Option<&Bound<'_, PyAny>>,
         width: u32,
-    ) -> PyResult<PyRefMut<'_, Self>> {
+    ) -> PyResult<PyRefMut<'py, Self>> {
         let fill_c = fill.map(|v| parse_color(v)).transpose()?.flatten();
         let outline_c = outline.map(|v| parse_color(v)).transpose()?.flatten();
         if r <= 0 {
@@ -271,8 +271,8 @@ impl Canvas {
 
     /// 椭圆：x0,y0,x1,y1 外接矩形
     #[pyo3(signature = (x0, y0, x1, y1, fill=None, outline=None, width=1))]
-    fn ellipse(
-        mut slf: PyRefMut<'_, Self>,
+    fn ellipse<'py>(
+        mut slf: PyRefMut<'py, Self>,
         x0: i32,
         y0: i32,
         x1: i32,
@@ -280,7 +280,7 @@ impl Canvas {
         fill: Option<&Bound<'_, PyAny>>,
         outline: Option<&Bound<'_, PyAny>>,
         width: u32,
-    ) -> PyResult<PyRefMut<'_, Self>> {
+    ) -> PyResult<PyRefMut<'py, Self>> {
         let fill_c = fill.map(|v| parse_color(v)).transpose()?.flatten();
         let outline_c = outline.map(|v| parse_color(v)).transpose()?.flatten();
         let (cx, cy) = ((x0 + x1) / 2, (y0 + y1) / 2);
@@ -302,7 +302,7 @@ impl Canvas {
                 if let Some(oc) = outline_c {
                     let inner_rx = (rx - bw).max(0) as f32;
                     let inner_ry = (ry - bw).max(0) as f32;
-                    let in_inner = if inner_rx > 0 && inner_ry > 0 {
+                    let in_inner = if inner_rx > 0.0 && inner_ry > 0.0 {
                         let ax = (x - cx) as f32 / inner_rx;
                         let ay = (y - cy) as f32 / inner_ry;
                         ax * ax + ay * ay <= 1.0
@@ -320,8 +320,8 @@ impl Canvas {
 
     /// 渐变矩形：direction 为 "vertical"(默认) 或 "horizontal"
     #[pyo3(signature = (x0, y0, x1, y1, color_a, color_b, direction="vertical"))]
-    fn gradient_rect(
-        mut slf: PyRefMut<'_, Self>,
+    fn gradient_rect<'py>(
+        mut slf: PyRefMut<'py, Self>,
         x0: i32,
         y0: i32,
         x1: i32,
@@ -329,7 +329,7 @@ impl Canvas {
         color_a: &Bound<'_, PyAny>,
         color_b: &Bound<'_, PyAny>,
         direction: &str,
-    ) -> PyResult<PyRefMut<'_, Self>> {
+    ) -> PyResult<PyRefMut<'py, Self>> {
         let a = parse_color(color_a)?.unwrap_or([0, 0, 0, 255]);
         let b = parse_color(color_b)?.unwrap_or([0, 0, 0, 255]);
         let (w, h) = (x1 - x0, y1 - y0);
@@ -358,8 +358,8 @@ impl Canvas {
 
     /// 文本：align 为 left/center/right；wrap_width>0 时自动换行
     #[pyo3(signature = (x, y, text, font_size=20, color=None, align="left", wrap_width=0))]
-    fn text(
-        mut slf: PyRefMut<'_, Self>,
+    fn text<'py>(
+        mut slf: PyRefMut<'py, Self>,
         x: i32,
         y: i32,
         text: &str,
@@ -367,7 +367,7 @@ impl Canvas {
         color: Option<&Bound<'_, PyAny>>,
         align: &str,
         wrap_width: u32,
-    ) -> PyResult<PyRefMut<'_, Self>> {
+    ) -> PyResult<PyRefMut<'py, Self>> {
         if font_size == 0 {
             return Err(PyRuntimeError::new_err("font_size 必须大于 0"));
         }
@@ -375,7 +375,10 @@ impl Canvas {
             .font
             .as_ref()
             .ok_or_else(|| PyRuntimeError::new_err("未设置字体，请在 Canvas.new 传入 font_path"))?;
-        let c = parse_color(color)?.unwrap_or([40, 40, 60, 255]);
+        let c = match color {
+            Some(v) => parse_color(v)?.unwrap_or([40, 40, 60, 255]),
+            None => [40, 40, 60, 255],
+        };
         let align = match align {
             "center" => Align::Center,
             "right" => Align::Right,
@@ -440,14 +443,14 @@ impl Canvas {
 
     /// 贴图：解码 png/jpeg 后 alpha 混合到画布 (x,y)；width/height 可选缩放
     #[pyo3(signature = (image_bytes, x, y, width=None, height=None))]
-    fn paste(
-        mut slf: PyRefMut<'_, Self>,
+    fn paste<'py>(
+        mut slf: PyRefMut<'py, Self>,
         image_bytes: &[u8],
         x: i32,
         y: i32,
         width: Option<u32>,
         height: Option<u32>,
-    ) -> PyResult<PyRefMut<'_, Self>> {
+    ) -> PyResult<PyRefMut<'py, Self>> {
         let mut img = decode_rgba(image_bytes).map_err(PyRuntimeError::new_err)?;
         if let (Some(nw), Some(nh)) = (width, height) {
             img = imageops::resize(
@@ -470,7 +473,10 @@ impl Canvas {
     }
 
     /// 对整张画布做高斯模糊（radius 为 sigma）
-    fn blur(mut slf: PyRefMut<'_, Self>, radius: f32) -> PyResult<PyRefMut<'_, Self>> {
+    fn blur<'py>(
+        mut slf: PyRefMut<'py, Self>,
+        radius: f32,
+    ) -> PyResult<PyRefMut<'py, Self>> {
         if radius <= 0.0 {
             return Ok(slf);
         }
@@ -482,15 +488,15 @@ impl Canvas {
 
     /// 半透明遮罩：alpha 0-255
     #[pyo3(signature = (x0, y0, x1, y1, color, alpha))]
-    fn alpha_overlay(
-        mut slf: PyRefMut<'_, Self>,
+    fn alpha_overlay<'py>(
+        mut slf: PyRefMut<'py, Self>,
         x0: i32,
         y0: i32,
         x1: i32,
         y1: i32,
         color: &Bound<'_, PyAny>,
         alpha: u32,
-    ) -> PyResult<PyRefMut<'_, Self>> {
+    ) -> PyResult<PyRefMut<'py, Self>> {
         let mut c = parse_color(color)?.unwrap_or([0, 0, 0, 255]);
         c[3] = alpha.min(255) as u8;
         let (w, h) = (slf.width as i32, slf.height as i32);
