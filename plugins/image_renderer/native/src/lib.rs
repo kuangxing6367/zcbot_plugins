@@ -31,6 +31,11 @@ struct Style {
     content_color: [u8; 4],
     footer_color: [u8; 4],
     accent_color: [u8; 4],
+    name_color: [u8; 4],
+    value_color: [u8; 4],
+    highlight_bg: [u8; 4],
+    highlight_color: [u8; 4],
+    rank_color: [u8; 4],
     bg_color: Option<[u8; 4]>,
     bg_gradient: Option<([u8; 4], [u8; 4])>,
     border_color: Option<[u8; 4]>,
@@ -47,6 +52,11 @@ impl Default for Style {
             content_color: [60, 60, 80, 255],
             footer_color: [160, 160, 170, 255],
             accent_color: [99, 102, 241, 255],
+            name_color: [40, 40, 60, 255],
+            value_color: [120, 120, 140, 255],
+            highlight_bg: [236, 239, 255, 255],
+            highlight_color: [99, 102, 241, 255],
+            rank_color: [160, 160, 170, 255],
             bg_color: None,
             bg_gradient: None,
             border_color: None,
@@ -137,6 +147,7 @@ struct Opts {
     title_size: Option<u32>,
     content_size: Option<u32>,
     footer_size: Option<u32>,
+    item_size: Option<u32>,
     line_height: Option<u32>,
     padding: Option<u32>,
     style: Style,
@@ -181,6 +192,7 @@ impl Opts {
             title_size: None,
             content_size: None,
             footer_size: None,
+            item_size: None,
             line_height: None,
             padding: None,
             style: Style::default(),
@@ -192,6 +204,7 @@ impl Opts {
             o.title_size = get_u32(d, "title_size")?;
             o.content_size = get_u32(d, "content_size")?;
             o.footer_size = get_u32(d, "footer_size")?;
+            o.item_size = get_u32(d, "item_size")?;
             o.line_height = get_u32(d, "line_height")?;
             o.padding = get_u32(d, "padding")?;
             o.style.bg_color = get_color(d, "bg_color")?;
@@ -213,6 +226,11 @@ impl Opts {
             o.style.content_color = get_color(d, "content_color")?.unwrap_or(o.style.content_color);
             o.style.footer_color = get_color(d, "footer_color")?.unwrap_or(o.style.footer_color);
             o.style.accent_color = get_color(d, "accent_color")?.unwrap_or(o.style.accent_color);
+            o.style.name_color = get_color(d, "name_color")?.unwrap_or(o.style.name_color);
+            o.style.value_color = get_color(d, "value_color")?.unwrap_or(o.style.value_color);
+            o.style.highlight_bg = get_color(d, "highlight_bg")?.unwrap_or(o.style.highlight_bg);
+            o.style.highlight_color = get_color(d, "highlight_color")?.unwrap_or(o.style.highlight_color);
+            o.style.rank_color = get_color(d, "rank_color")?.unwrap_or(o.style.rank_color);
             o.show_footer = get_bool(d, "show_footer", true)?;
             o.footer_text = match get_opt(d, "footer_text")? {
                 Some(v) if !v.is_none() => Some(
@@ -606,9 +624,210 @@ fn render_card(
     encode_png(width, total_h, buf).map_err(PyRuntimeError::new_err)
 }
 
+/// 渲染榜单/列表图片，返回 PNG bytes
+///
+/// items 为列表，每项可以是：
+///   - 字符串：普通行（左侧文本）
+///   - dict：{ "name": 左侧文本, "value": 右侧数值文本, "highlight": 是否高亮,
+///             "rank": 可选序号（显示在最左侧）}
+#[pyfunction]
+#[pyo3(signature = (title, items, font_path, width=600, padding=30, options=None))]
+#[allow(clippy::too_many_arguments)]
+fn render_list(
+    title: &str,
+    items: &Bound<'_, PyAny>,
+    font_path: &str,
+    width: u32,
+    padding: u32,
+    options: Option<&Bound<'_, PyDict>>,
+) -> PyResult<Vec<u8>> {
+    if width == 0 {
+        return Err(PyRuntimeError::new_err("width 必须大于 0"));
+    }
+    let o = Opts::parse(options)?;
+    let padding = o.padding.unwrap_or(padding);
+    let title_size = o.title_size.unwrap_or(24);
+    let item_size = o.item_size.unwrap_or(18);
+    if title_size == 0 || item_size == 0 {
+        return Err(PyRuntimeError::new_err("字号必须大于 0"));
+    }
+    let font = load_font(font_path).map_err(PyRuntimeError::new_err)?;
+    let line_h = match o.line_height {
+        Some(v) if v > 0 => v,
+        _ => (item_size as f32 * 1.6).round().max(1.0) as u32,
+    };
+
+    // 解析列表项
+    struct Item {
+        name: String,
+        value: String,
+        rank: Option<String>,
+        highlight: bool,
+    }
+    let seq: Vec<Bound<'_, PyAny>> = items
+        .try_iter()
+        .map_err(|_| PyRuntimeError::new_err("items 必须是一个列表"))?
+        .collect::<PyResult<_>>()
+        .map_err(|_| PyRuntimeError::new_err("items 解析失败"))?;
+    let mut parsed: Vec<Item> = Vec::with_capacity(seq.len());
+    for it in &seq {
+        // 字符串行
+        if let Ok(s) = it.extract::<String>() {
+            parsed.push(Item {
+                name: s,
+                value: String::new(),
+                rank: None,
+                highlight: false,
+            });
+            continue;
+        }
+        // dict 行
+        let d: &Bound<'_, PyDict> = it
+            .downcast()
+            .map_err(|_| PyRuntimeError::new_err("列表项必须是字符串或 dict"))?;
+        let get_str = |key: &str, default: &str| -> PyResult<String> {
+            match d.get_item(key)? {
+                Some(v) if !v.is_none() => v
+                    .extract()
+                    .map_err(|_| PyRuntimeError::new_err(format!("{key} 必须是字符串"))),
+                _ => Ok(default.to_string()),
+            }
+        };
+        let name = get_str("name", "")?;
+        let value = get_str("value", "")?;
+        let rank = match d.get_item("rank")? {
+            Some(v) if !v.is_none() => Some(
+                v.extract::<String>()
+                    .map_err(|_| PyRuntimeError::new_err("rank 必须是字符串或数字"))?,
+            ),
+            _ => None,
+        };
+        let highlight = match d.get_item("highlight")? {
+            Some(v) if !v.is_none() => v
+                .extract::<bool>()
+                .map_err(|_| PyRuntimeError::new_err("highlight 必须是布尔值"))?,
+            _ => false,
+        };
+        parsed.push(Item {
+            name,
+            value,
+            rank,
+            highlight,
+        });
+    }
+
+    // 高度：标题区 + 每行 + 底部留白
+    let title_h = 56u32;
+    let row_h = line_h + 4;
+    let total_h = padding * 2 + title_h + parsed.len() as u32 * row_h + 10;
+    let mut buf = vec![0u8; (width * total_h * 4) as usize];
+
+    // 背景（默认同卡片：渐变）
+    fill_bg(&mut buf, width, total_h, &o.style, [248, 250, 255, 255]);
+    if o.style.bg_color.is_none() && o.style.bg_gradient.is_none() {
+        let mut g = o.style;
+        g.bg_gradient = Some(([248, 250, 255, 255], [255, 255, 245, 255]));
+        fill_bg(&mut buf, width, total_h, &g, [248, 250, 255, 255]);
+    }
+    draw_border(&mut buf, width, total_h, &o.style);
+
+    // 标题区：左侧彩色条 + 标题
+    for y in padding..padding + title_h {
+        for x in padding..padding + 6 {
+            set_px(&mut buf, width, x as i32, y as i32, o.style.accent_color);
+        }
+    }
+    draw_text(
+        &mut buf,
+        width,
+        total_h,
+        &font,
+        title_size as f32,
+        (padding + 18) as i32,
+        (padding + title_size) as i32,
+        title,
+        o.style.title_color,
+    );
+
+    // 行内容
+    let x0 = padding as i32;
+    let x1 = width as i32 - padding as i32;
+    let rank_w = 44i32; // 序号区宽度
+    let mut top = padding + title_h + 8;
+    for item in &parsed {
+        let row_top = top as i32;
+        let row_bot = top + row_h;
+        let baseline = row_top + item_size as i32;
+
+        // 高亮整行背景
+        if item.highlight {
+            for y in row_top..row_bot as i32 {
+                for x in x0..x1 {
+                    set_px(&mut buf, width, x, y, o.style.highlight_bg);
+                }
+            }
+        }
+
+        // 序号
+        if let Some(r) = &item.rank {
+            let rw = measure_text(&font, r, item_size as f32);
+            draw_text(
+                &mut buf,
+                width,
+                total_h,
+                &font,
+                item_size as f32,
+                (x0 + rank_w) as i32 - rw as i32,
+                baseline,
+                r,
+                o.style.rank_color,
+            );
+        }
+
+        // 名称（左对齐，跳过序号区）
+        let name_x = x0 + rank_w;
+        draw_text(
+            &mut buf,
+            width,
+            total_h,
+            &font,
+            item_size as f32,
+            name_x,
+            baseline,
+            &item.name,
+            if item.highlight {
+                o.style.highlight_color
+            } else {
+                o.style.name_color
+            },
+        );
+
+        // 数值（右对齐）
+        if !item.value.is_empty() {
+            let vw = measure_text(&font, &item.value, item_size as f32);
+            draw_text(
+                &mut buf,
+                width,
+                total_h,
+                &font,
+                item_size as f32,
+                (x1 as f32 - vw).max(name_x as f32) as i32,
+                baseline,
+                &item.value,
+                o.style.value_color,
+            );
+        }
+
+        top += row_h;
+    }
+
+    encode_png(width, total_h, buf).map_err(PyRuntimeError::new_err)
+}
+
 #[pymodule]
 fn zcbot_render(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(render_text, m)?)?;
     m.add_function(wrap_pyfunction!(render_card, m)?)?;
+    m.add_function(wrap_pyfunction!(render_list, m)?)?;
     Ok(())
 }

@@ -19,7 +19,19 @@ native/
 ```python
 render_text(text, font_path, width=500, font_size=24, padding=20, options=None) -> bytes
 render_card(title, content, font_path, timestamp, width=600, padding=30, options=None) -> bytes
+render_list(title, items, font_path, width=600, padding=30, options=None) -> bytes
 ```
+
+### render_list items
+
+`items` 为列表，每项为字符串或 dict：
+
+| 键 | 说明 | 默认 |
+|---|---|---|
+| `name` | 左侧文本 | `""` |
+| `value` | 右侧数值文本（右对齐） | `""`（不显示） |
+| `rank` | 最左侧序号（右对齐到序号区） | 无 |
+| `highlight` | 整行高亮背景 + 强调色文字 | `false` |
 
 ## options 参数（与 PIL 回退版完全一致）
 
@@ -32,6 +44,11 @@ render_card(title, content, font_path, timestamp, width=600, padding=30, options
 | `content_color` | 卡片内容颜色 | `[60,60,80,255]` |
 | `footer_color` | 页脚颜色 | `[160,160,170,255]` |
 | `accent_color` | 标题栏左侧彩条 | `[99,102,241,255]` |
+| `name_color` | render_list 条目名称颜色 | `[40,40,60,255]` |
+| `value_color` | render_list 条目数值颜色 | `[120,120,140,255]` |
+| `highlight_bg` | render_list 高亮行背景 | `[236,239,255,255]` |
+| `highlight_color` | render_list 高亮行文字 | `[99,102,241,255]` |
+| `rank_color` | render_list 序号颜色 | `[160,160,170,255]` |
 | `bg_color` | 纯色背景（有则覆盖默认渐变） | 无 |
 | `bg_gradient` | 垂直渐变 `[顶部色, 底部色]` | 卡片默认 `[[248,250,255],[255,255,245]]` |
 | `border_color` | 边框颜色 | 无（不画边框） |
@@ -39,6 +56,7 @@ render_card(title, content, font_path, timestamp, width=600, padding=30, options
 | `radius` | 圆角半径（px） | `0` |
 | `font_size` | render_text 字号 | `24` |
 | `title_size` / `content_size` / `footer_size` | 卡片各段字号 | `28` / `20` / `14` |
+| `item_size` | render_list 条目字号 | `18` |
 | `line_height` | 行高（px），0=自动 | 文本 `font_size*1.35`，卡片 `30` |
 | `padding` | 内边距 | 文本 `20`，卡片 `30` |
 | `align` | 对齐：`"left"` / `"center"` / `"right"` | `"left"` |

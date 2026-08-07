@@ -203,6 +203,18 @@ def _render_text_image(text, width=500, padding=20, options=None):
     return _render_text_image_pil(text, width, padding, options)
 
 
+def _render_list_image(title, items, width=600, padding=30, options=None):
+    """渲染榜单/列表图片。原生可用返回 PNG bytes，否则返回 PIL Image"""
+    if _NATIVE is not None:
+        font = _find_font_path()
+        if font:
+            try:
+                return _NATIVE.render_list(title, items, font, width, padding, options)
+            except Exception as e:
+                logger.warning(f"[image_renderer] 原生 render_list 失败，回退 PIL: {e}")
+    return _render_list_image_pil(title, items, width, padding, options)
+
+
 # ---------------------------------------------------------------- PIL 回退实现
 
 def _render_card_image_pil(title, content, width=600, padding=30, options=None):
@@ -391,6 +403,116 @@ def _render_text_image_pil(text, width=500, padding=20, options=None):
                 x = padding
             draw.text((x, y_off), line, fill=text_color, font=font)
             y_off += line_height
+
+    # 圆角裁剪
+    if radius > 0 and gradient:
+        mask = Image.new("L", (width, total_h), 0)
+        ImageDraw.Draw(mask).rounded_rectangle(
+            [0, 0, width - 1, total_h - 1], radius=radius, fill=255
+        )
+        img.putalpha(mask)
+    return img
+
+
+def _render_list_image_pil(title, items, width=600, padding=30, options=None):
+    """PIL 版榜单/列表渲染（与原生版布局一致，支持相同 options）"""
+    from PIL import Image, ImageDraw
+
+    options = options or {}
+    padding = int(options.get('padding', padding))
+    title_size = int(options.get('title_size', 24))
+    item_size = int(options.get('item_size', 18))
+    line_h = int(options.get('line_height', 0)) or max(1, round(item_size * 1.6))
+    radius = int(options.get('radius', 0))
+    border_color = _parse_color(options.get('border_color'))
+    border_width = int(options.get('border_width', 2))
+
+    title_color = _parse_color(options.get('title_color'), (20, 30, 60, 255))
+    accent_color = _parse_color(options.get('accent_color'), (99, 102, 241, 255))
+    name_color = _parse_color(options.get('name_color'), (40, 40, 60, 255))
+    value_color = _parse_color(options.get('value_color'), (120, 120, 140, 255))
+    highlight_bg = _parse_color(options.get('highlight_bg'), (236, 239, 255, 255))
+    highlight_color = _parse_color(options.get('highlight_color'), (99, 102, 241, 255))
+    rank_color = _parse_color(options.get('rank_color'), (160, 160, 170, 255))
+    bg_color = _parse_color(options.get('bg_color'))
+    bg_gradient = options.get('bg_gradient')
+
+    title_font = _get_font(title_size, bold=True)
+    item_font = _get_font(item_size)
+
+    title_h = 56
+    row_h = line_h + 4
+    total_h = padding * 2 + title_h + len(items) * row_h + 10
+
+    img = Image.new("RGBA", (width, total_h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    # 背景：渐变 / 纯色 / 默认渐变
+    gradient = False
+    if bg_gradient:
+        top = _parse_color(bg_gradient[0], (248, 250, 255, 255))
+        bottom = _parse_color(bg_gradient[1], (255, 255, 245, 255))
+        for y in range(total_h):
+            draw.line([(0, y), (width, y)], fill=_gradient_row(top, bottom, y, total_h))
+        gradient = True
+    elif bg_color is None:
+        top, bottom = (248, 250, 255, 255), (255, 255, 245, 255)
+        for y in range(total_h):
+            draw.line([(0, y), (width, y)], fill=_gradient_row(top, bottom, y, total_h))
+        gradient = True
+    else:
+        if radius > 0:
+            draw.rounded_rectangle([0, 0, width - 1, total_h - 1], radius=radius, fill=bg_color)
+        else:
+            draw.rectangle([0, 0, width - 1, total_h - 1], fill=bg_color)
+
+    # 边框
+    if border_color:
+        box = [0, 0, width - 1, total_h - 1]
+        if radius > 0:
+            draw.rounded_rectangle(box, radius=radius, outline=border_color, width=border_width)
+        else:
+            draw.rectangle(box, outline=border_color, width=border_width)
+
+    # 标题区：左侧彩色条 + 标题
+    draw.rectangle([padding, padding, padding + 6, padding + title_h], fill=accent_color)
+    if title_font:
+        draw.text((padding + 18, padding + 4), title, fill=title_color, font=title_font)
+
+    # 行内容
+    x0, x1 = padding, width - padding
+    rank_w = 44
+    y_off = padding + title_h + 8
+    if item_font:
+        for item in items:
+            if isinstance(item, str):
+                row = {'name': item, 'value': '', 'rank': None, 'highlight': False}
+            else:
+                row = {
+                    'name': str(item.get('name', '')),
+                    'value': str(item.get('value', '')) if item.get('value') is not None else '',
+                    'rank': str(item.get('rank')) if item.get('rank') is not None else None,
+                    'highlight': bool(item.get('highlight', False)),
+                }
+            # 高亮整行背景
+            if row['highlight']:
+                draw.rectangle([x0, y_off, x1, y_off + row_h], fill=highlight_bg)
+
+            baseline = y_off + item_size  # 与原生版 baseline 近似
+            # 序号（右对齐到序号区）
+            if row['rank']:
+                draw.text((x0 + rank_w - item_font.getlength(row['rank']), y_off),
+                          row['rank'], fill=rank_color, font=item_font)
+            # 名称
+            name_color_cur = highlight_color if row['highlight'] else name_color
+            draw.text((x0 + rank_w, y_off), row['name'], fill=name_color_cur, font=item_font)
+            # 数值（右对齐）
+            if row['value']:
+                vw = item_font.getlength(row['value'])
+                draw.text((x1 - min(vw, x1 - x0 - rank_w), y_off),
+                          row['value'], fill=value_color, font=item_font)
+
+            y_off += row_h
 
     # 圆角裁剪
     if radius > 0 and gradient:
