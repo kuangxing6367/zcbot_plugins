@@ -144,7 +144,7 @@ struct Opts {
     footer_text: Option<String>,
 }
 
-fn get_opt(d: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<Bound<'_, PyAny>>> {
+fn get_opt<'py>(d: &Bound<'py, PyDict>, key: &str) -> PyResult<Option<Bound<'py, PyAny>>> {
     Ok(d.get_item(key)?)
 }
 
@@ -554,7 +554,7 @@ fn render_card(
     // 内容（支持对齐，与 PIL 版一致：内容区 x 起点为 padding+6）
     let mut top = padding + title_h + 10;
     let content_x0 = (padding + 6) as i32;
-    let content_x1 = (width as i32 - padding as i32 - 6);
+    let content_x1 = width as i32 - padding as i32 - 6;
     for line in &content_lines {
         let lw = measure_text(&font, line, content_size as f32);
         let bx = line_x(o.style.align, lw, content_x0, content_x1);
