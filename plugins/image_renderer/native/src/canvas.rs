@@ -8,6 +8,9 @@
 //! png = c.to_png()
 //! ```
 //! 所有绘制方法返回 self，可链式调用；最后调用 to_png() 输出。
+//!
+//! 注意：方法内统一使用 `let canvas = &mut *slf;` 做字段级拆分借用，
+//! 避免 PyRefMut 的 DerefMut 导致 buf/width/font 同时借用冲突。
 
 use fontdue::Font;
 use image::{imageops, GenericImageView, RgbaImage};
@@ -17,7 +20,7 @@ use pyo3::types::PyAny;
 
 use crate::{
     draw_text, encode_png, in_rounded, lerp_color, line_x, load_font, measure_text, parse_color,
-    set_px, wrap_lines, Align,
+    wrap_lines, Align,
 };
 
 /// 将 RGBA 像素混合到目标画布
@@ -87,7 +90,12 @@ pub(crate) struct Canvas {
 
 impl Canvas {
     /// 内部构造（不经过 Python），供 render_* 组合封装复用
-    pub(crate) fn new_raw(width: u32, height: u32, bg: [u8; 4], font_path: Option<&str>) -> Result<Canvas, String> {
+    pub(crate) fn new_raw(
+        width: u32,
+        height: u32,
+        bg: [u8; 4],
+        font_path: Option<&str>,
+    ) -> Result<Canvas, String> {
         let mut buf = vec![0u8; (width * height * 4) as usize];
         for px in buf.chunks_exact_mut(4) {
             px.copy_from_slice(&bg);
@@ -165,8 +173,8 @@ impl Canvas {
         outline: Option<&Bound<'_, PyAny>>,
         width: u32,
     ) -> PyResult<PyRefMut<'py, Self>> {
-        let w = slf.width as i32;
-        let h = slf.height as i32;
+        let canvas = &mut *slf;
+        let (w, h) = (canvas.width as i32, canvas.height as i32);
         let x0 = x0.max(0);
         let y0 = y0.max(0);
         let x1 = x1.min(w);
@@ -185,7 +193,7 @@ impl Canvas {
                     continue;
                 }
                 if let Some(c) = fill_c {
-                    blend_px(&mut slf.buf, slf.width, x, y, c);
+                    blend_px(&mut canvas.buf, canvas.width, x, y, c);
                 }
                 if let Some(oc) = outline_c {
                     if width == 0 {
@@ -196,7 +204,7 @@ impl Canvas {
                     let inside_inner =
                         in_rounded(x, y, x0 + bw, y0 + bw, x1 - bw, y1 - bw, inner_r);
                     if !inside_inner {
-                        blend_px(&mut slf.buf, slf.width, x, y, oc);
+                        blend_px(&mut canvas.buf, canvas.width, x, y, oc);
                     }
                 }
             }
@@ -216,11 +224,12 @@ impl Canvas {
         if points.len() < 2 {
             return Ok(slf);
         }
+        let canvas = &mut *slf;
         let thickness = width.max(1) - 1;
         for seg in points.windows(2) {
             draw_line_thick(
-                &mut slf.buf,
-                slf.width,
+                &mut canvas.buf,
+                canvas.width,
                 seg[0][0] as i32,
                 seg[0][1] as i32,
                 seg[1][0] as i32,
@@ -248,6 +257,7 @@ impl Canvas {
         if r <= 0 {
             return Ok(slf);
         }
+        let canvas = &mut *slf;
         let bw = width.max(1) as i32;
         for y in (cy - r)..=(cy + r) {
             for x in (cx - r)..=(cx + r) {
@@ -255,13 +265,13 @@ impl Canvas {
                 let r2 = r * r;
                 if let Some(c) = fill_c {
                     if d2 <= r2 {
-                        blend_px(&mut slf.buf, slf.width, x, y, c);
+                        blend_px(&mut canvas.buf, canvas.width, x, y, c);
                     }
                 }
                 if let Some(oc) = outline_c {
                     let inner_r = (r - bw).max(0);
                     if d2 <= r2 && d2 > inner_r * inner_r {
-                        blend_px(&mut slf.buf, slf.width, x, y, oc);
+                        blend_px(&mut canvas.buf, canvas.width, x, y, oc);
                     }
                 }
             }
@@ -288,6 +298,7 @@ impl Canvas {
         if rx == 0 || ry == 0 {
             return Ok(slf);
         }
+        let canvas = &mut *slf;
         let bw = width.max(1) as i32;
         for y in y0..=y1 {
             for x in x0..=x1 {
@@ -296,7 +307,7 @@ impl Canvas {
                 let v = nx * nx + ny * ny;
                 if let Some(c) = fill_c {
                     if v <= 1.0 {
-                        blend_px(&mut slf.buf, slf.width, x, y, c);
+                        blend_px(&mut canvas.buf, canvas.width, x, y, c);
                     }
                 }
                 if let Some(oc) = outline_c {
@@ -310,7 +321,7 @@ impl Canvas {
                         false
                     };
                     if v <= 1.0 && !in_inner {
-                        blend_px(&mut slf.buf, slf.width, x, y, oc);
+                        blend_px(&mut canvas.buf, canvas.width, x, y, oc);
                     }
                 }
             }
@@ -336,6 +347,7 @@ impl Canvas {
         if w <= 0 || h <= 0 {
             return Ok(slf);
         }
+        let canvas = &mut *slf;
         let vertical = !direction.eq_ignore_ascii_case("horizontal");
         for y in y0..y1 {
             for x in x0..x1 {
@@ -350,7 +362,7 @@ impl Canvas {
                 } else {
                     (x - x0) as f32 / (w - 1) as f32
                 };
-                blend_px(&mut slf.buf, slf.width, x, y, lerp_color(a, b, t));
+                blend_px(&mut canvas.buf, canvas.width, x, y, lerp_color(a, b, t));
             }
         }
         Ok(slf)
@@ -371,7 +383,8 @@ impl Canvas {
         if font_size == 0 {
             return Err(PyRuntimeError::new_err("font_size 必须大于 0"));
         }
-        let font = slf
+        let canvas = &mut *slf;
+        let font = canvas
             .font
             .as_ref()
             .ok_or_else(|| PyRuntimeError::new_err("未设置字体，请在 Canvas.new 传入 font_path"))?;
@@ -397,12 +410,12 @@ impl Canvas {
             let bx = if wrap_width > 0 {
                 line_x(align, lw, x, x + wrap_width as i32)
             } else {
-                line_x(align, lw, x, slf.width as i32)
+                line_x(align, lw, x, canvas.width as i32)
             };
             draw_text(
-                &mut slf.buf,
-                slf.width,
-                slf.height,
+                &mut canvas.buf,
+                canvas.width,
+                canvas.height,
                 font,
                 size,
                 bx,
@@ -460,13 +473,14 @@ impl Canvas {
                 image::imageops::FilterType::Lanczos3,
             );
         }
+        let canvas = &mut *slf;
         let (iw, ih) = img.dimensions();
         for j in 0..ih {
             for i in 0..iw {
                 let p = img.get_pixel(i, j);
                 let px = x + i as i32;
                 let py = y + j as i32;
-                blend_px(&mut slf.buf, slf.width, px, py, [p[0], p[1], p[2], p[3]]);
+                blend_px(&mut canvas.buf, canvas.width, px, py, [p[0], p[1], p[2], p[3]]);
             }
         }
         Ok(slf)
@@ -480,9 +494,10 @@ impl Canvas {
         if radius <= 0.0 {
             return Ok(slf);
         }
-        let img = rgba_image(&slf.buf, slf.width, slf.height);
+        let canvas = &mut *slf;
+        let img = rgba_image(&canvas.buf, canvas.width, canvas.height);
         let blurred = imageops::blur(&img, radius);
-        slf.buf = blurred.into_raw();
+        canvas.buf = blurred.into_raw();
         Ok(slf)
     }
 
@@ -499,10 +514,11 @@ impl Canvas {
     ) -> PyResult<PyRefMut<'py, Self>> {
         let mut c = parse_color(color)?.unwrap_or([0, 0, 0, 255]);
         c[3] = alpha.min(255) as u8;
-        let (w, h) = (slf.width as i32, slf.height as i32);
+        let canvas = &mut *slf;
+        let (w, h) = (canvas.width as i32, canvas.height as i32);
         for y in y0.max(0)..y1.min(h) {
             for x in x0.max(0)..x1.min(w) {
-                blend_px(&mut slf.buf, slf.width, x, y, c);
+                blend_px(&mut canvas.buf, canvas.width, x, y, c);
             }
         }
         Ok(slf)

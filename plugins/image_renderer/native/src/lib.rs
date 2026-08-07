@@ -986,8 +986,9 @@ fn image_gray(img_bytes: &[u8]) -> PyResult<Vec<u8>> {
 #[pyo3(signature = (img_bytes, factor=1.5))]
 fn image_contrast(img_bytes: &[u8], factor: f32) -> PyResult<Vec<u8>> {
     let img = decode_img(img_bytes).map_err(PyRuntimeError::new_err)?;
-    let out = img.contrast(factor);
-    encode_png_img(&out).map_err(PyRuntimeError::new_err)
+    let rgba = img.to_rgba8();
+    let out = image::imageops::contrast(&rgba, factor);
+    encode_png_img(&image::DynamicImage::ImageRgba8(out)).map_err(PyRuntimeError::new_err)
 }
 
 /// 将前景图合成到背景图 (x, y) 处（alpha 混合），返回 PNG bytes
