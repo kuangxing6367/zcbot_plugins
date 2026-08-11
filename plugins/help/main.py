@@ -1,11 +1,11 @@
 """
 帮助系统插件 - 查询所有已注册命令并生成图片帮助菜单
-从 AstrBot 迁移至 zgric_onebot11 新语法
+帮助系统插件
 
-原插件依赖 AstrBot 的 star_handlers_registry 获取命令，
+原插件依赖框架的命令注册系统获取命令，
 新框架中命令存储在 MySQL 的 commands 表，plugins 表存储插件元数据。
 
-本插件使用 Pillow + numpy 渲染图片帮助菜单，
+本插件使用 Pillow 渲染图片帮助菜单（纯 Python，无 numpy 依赖），
 图片保存到临时文件，通过 CQ 码 [CQ:image,file=file:///路径] 发送，
 发送完成后立即删除临时文件。
 
@@ -23,6 +23,7 @@
   logo_enable        布尔  启用帮助菜单 logo，默认 true
 """
 import os
+import re
 import tempfile
 from collections import OrderedDict
 
@@ -90,6 +91,23 @@ def _get_display_name_map(ctx):
     return mapping
 
 
+def _prettify_command(pattern):
+    r"""将正则 pattern 美化为友好的命令名显示。
+
+    例如: ^/一言(?:\s+(.+))?\s*$ → /一言
+          ^/今日早报\s*$ → /今日早报
+    """
+    cmd = pattern
+    cmd = re.sub(r'^\^', '', cmd)
+    cmd = re.sub(r'\$$', '', cmd)
+    cmd = re.sub(r'\([^)]*\)[\?\*\+]?', '', cmd)
+    cmd = re.sub(r'\\[sS]\*|\\[sS]\+', '', cmd)
+    cmd = re.sub(r'\.\*?\??', '', cmd)
+    cmd = cmd.replace('?', '')
+    cmd = cmd.strip()
+    return cmd if cmd else pattern
+
+
 def _build_plugin_commands(ctx, rows):
     """
     将数据库查询结果转换为 draw.py 期望的格式：
@@ -142,6 +160,7 @@ def _build_plugin_commands(ctx, rows):
         pattern = (r.get("pattern") or "").strip()
         if not pattern:
             continue
+        pattern = _prettify_command(pattern)
         # 确保命令以 / 开头
         if not pattern.startswith("/"):
             pattern = "/" + pattern
@@ -211,6 +230,7 @@ def _build_fallback_text(ctx, rows):
             desc = (cmd.get("description") or "").strip()
             if not pattern:
                 continue
+            pattern = _prettify_command(pattern)
             display_cmd = pattern if pattern.startswith("/") else f"/{pattern}"
             if desc:
                 lines.append(f"  {display_cmd} - {desc}")
@@ -283,6 +303,7 @@ def handle_help(event, match):
     # 读取额外配置
     plugin_blacklist = ctx.get_config("plugin_blacklist", []) or []
     custom_cmds = ctx.get_config("custom_cmds", []) or []
+    font_sizes = ctx.get_config("font_sizes", {}) or {}
 
     # 构造 drawer 配置 dict
     drawer_config = {
@@ -292,6 +313,7 @@ def handle_help(event, match):
         "show_all_cmds": show_all,
         "plugin_blacklist": plugin_blacklist,
         "custom_cmds": custom_cmds,
+        "font_sizes": font_sizes,
         "plugin_display_name": "ZGRIC",
         "plugin_version": __plugin_meta__["version"],
     }
@@ -306,9 +328,9 @@ def handle_help(event, match):
         _plugin_dir = _os.path.dirname(_os.path.abspath(__file__))
         if _plugin_dir not in _sys.path:
             _sys.path.insert(0, _plugin_dir)
-        from draw import AstrBotHelpDrawer
+        from draw import ZcbotHelpDrawer
 
-        drawer = AstrBotHelpDrawer(drawer_config)
+        drawer = ZcbotHelpDrawer(drawer_config)
         image_bytes = drawer.draw_help_image(plugin_commands)
         # 释放 drawer（含 resized_logo 等资源）
         del drawer
@@ -318,7 +340,19 @@ def handle_help(event, match):
 
     # 发送图片或回退文本
     if image_bytes:
-        _send_image(event, image_bytes, ctx)
+        # 优先走 image_renderer 官方发送接口 _send_image(ctx, event, img_or_bytes)
+        # （官方接口内部自带异常兜底与错误提示，不抛异常），不可用时回退本地发送
+        sent = False
+        try:
+            import sys as _sys2
+            _img_mod = _sys2.modules.get("plugin_image_renderer")
+            if _img_mod is not None and hasattr(_img_mod, "_send_image"):
+                _img_mod._send_image(ctx, event, image_bytes)
+                sent = True
+        except Exception as _e:
+            ctx.log(f"image_renderer 统一发送失败，回退本地发送: {_e}", level="warning")
+        if not sent:
+            _send_image(event, image_bytes, ctx)
         # 释放图片字节缓冲
         del image_bytes
     else:

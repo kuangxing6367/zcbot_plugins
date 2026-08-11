@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 开发助手</title>
+<style>
+  :root {
+    --bg: #f6f7fb;
+    --card: #ffffff;
+    --border: #e5e7eb;
+    --text: #1f2329;
+    --muted: #8a919f;
+    --primary: #3b82f6;
+    --primary-hover: #2563eb;
+    --danger: #ef4444;
+    --ok: #22c55e;
+    --warn: #f59e0b;
+    --user-bubble: #3b82f6;
+    --ai-bubble: #f0f4ff;
+    --sys-bubble: #f3f4f6;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    font-size: 14px;
+    overflow: hidden;
+  }
+  header {
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+  }
+  header h1 { font-size: 16px; font-weight: 600; }
+  .hdr-info { color: var(--muted); font-size: 12px; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; }
+  .dot-idle { background: var(--ok); }
+  .dot-running { background: var(--warn); animation: blink 1s infinite; }
+  .dot-waiting { background: var(--primary); animation: blink 1s infinite; }
+  .dot-off { background: #d1d5db; }
+  @keyframes blink { 50% { opacity: 0.3; } }
+  .status { margin-left: auto; font-size: 12px; color: var(--muted); }
+
+  .layout { flex: 1; display: flex; min-height: 0; }
+
+  /* 左侧会话列表 */
+  .sidebar {
+    width: 230px;
+    background: var(--card);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+  .sidebar-head {
+    padding: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .btn-new {
+    width: 100%;
+    background: var(--primary);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 7px 0;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .btn-new:hover { background: var(--primary-hover); }
+  .session-list { flex: 1; overflow-y: auto; padding: 6px; }
+  .session-item {
+    padding: 8px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    margin-bottom: 2px;
+    border: 1px solid transparent;
+    position: relative;
+  }
+  .session-item:hover { background: #f8fafc; }
+  .session-item.active { background: #eef2ff; border-color: #c7d2fe; }
+  .s-code { font-weight: 600; color: var(--primary); font-size: 12px; }
+  .s-title {
+    font-size: 12px;
+    color: var(--text);
+    margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .s-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .s-badge {
+    position: absolute; right: 8px; top: 8px;
+    font-size: 10px; padding: 1px 6px; border-radius: 8px;
+  }
+  .badge-run { background: #fef3c7; color: #b45309; }
+  .badge-wait { background: #dbeafe; color: #1d4ed8; }
+  .badge-del {
+    position: absolute; right: 8px; bottom: 8px;
+    font-size: 10px; color: var(--danger); background: none; border: none;
+    cursor: pointer; opacity: 0; transition: opacity .2s;
+  }
+  .session-item:hover .badge-del { opacity: 1; }
+
+  /* 右侧聊天区 */
+  .chat { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .chat-head {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+  .chat-head .title { font-weight: 600; }
+  .chat-head .actions { margin-left: auto; display: flex; gap: 6px; }
+  .btn {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 10px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text);
+  }
+  .btn:hover { border-color: var(--primary); color: var(--primary); }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-danger:hover { border-color: var(--danger); color: var(--danger); }
+  .btn-primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+  .btn-primary:hover { background: var(--primary-hover); color: #fff; }
+
+  .msg-box { flex: 1; overflow-y: auto; padding: 16px; }
+  .msg { margin-bottom: 12px; display: flex; flex-direction: column; }
+  .msg .bubble {
+    max-width: 78%;
+    padding: 9px 12px;
+    border-radius: 10px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.55;
+    font-size: 13px;
+  }
+  .msg.user { align-items: flex-end; }
+  .msg.user .bubble { background: var(--user-bubble); color: #fff; border-bottom-right-radius: 2px; }
+  .msg.assistant { align-items: flex-start; }
+  .msg.assistant .bubble { background: var(--ai-bubble); border: 1px solid #e0e7ff; border-bottom-left-radius: 2px; }
+  .msg.system { align-items: center; }
+  .msg.system .bubble { background: var(--sys-bubble); color: var(--muted); font-size: 12px; max-width: 90%; }
+  .msg.progress .bubble { background: transparent; color: var(--muted); font-size: 12px; border-left: 3px solid var(--primary); padding: 4px 10px; }
+  .msg .role-label { font-size: 11px; color: var(--muted); margin-bottom: 3px; }
+  .msg.user .role-label { align-self: flex-end; }
+
+  /* 待确认面板 */
+  .pending-box {
+    border-top: 1px solid var(--border);
+    background: #fffbeb;
+    padding: 12px 16px;
+    flex-shrink: 0;
+  }
+  .pending-q { font-size: 13px; margin-bottom: 8px; white-space: pre-wrap; }
+  .pending-options { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+  .opt-btn {
+    background: #fff;
+    border: 1px solid #f59e0b;
+    color: #92400e;
+    border-radius: 6px;
+    padding: 5px 12px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .opt-btn:hover { background: #fef3c7; }
+  .say-row { display: flex; gap: 8px; }
+  .say-row input {
+    flex: 1;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 13px;
+    outline: none;
+  }
+  .say-row input:focus { border-color: var(--primary); }
+
+  /* 输入栏 */
+  .inputbar {
+    border-top: 1px solid var(--border);
+    background: var(--card);
+    padding: 10px 16px;
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+    flex-shrink: 0;
+  }
+  .inputbar textarea {
+    flex: 1;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 13px;
+    resize: none;
+    height: 42px;
+    outline: none;
+    font-family: inherit;
+    line-height: 1.4;
+  }
+  .inputbar textarea:focus { border-color: var(--primary); }
+  .inputbar .btn { padding: 8px 16px; font-size: 13px; }
+
+  .empty { color: var(--muted); text-align: center; padding: 60px 20px; font-size: 13px; }
+  .footer-hint { color: var(--muted); font-size: 11px; text-align: center; padding: 6px; }
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🤖 AI 开发助手</h1>
+  <span class="hdr-info" id="hdrInfo">加载中…</span>
+  <div class="status" id="statusBar"><span class="dot dot-off"></span><span id="statusText">连接中</span></div>
+</header>
+
+<div class="layout">
+  <!-- 会话列表 -->
+  <aside class="sidebar">
+    <div class="sidebar-head">
+      <button class="btn-new" id="newBtn" onclick="newSession()">＋ 新建会话</button>
+    </div>
+    <div class="session-list" id="sessionList"></div>
+    <div class="footer-hint">网页端 = 超管 QQ 身份<br>与 QQ 群数据互通</div>
+  </aside>
+
+  <!-- 聊天区 -->
+  <section class="chat">
+    <div class="chat-head">
+      <span class="title" id="chatTitle">请选择或新建会话</span>
+      <div class="actions">
+        <button class="btn" id="stopBtn" onclick="stopSession()" disabled>⏹ 停止</button>
+        <button class="btn" id="contBtn" onclick="contSession()" disabled>🔄 修改需求</button>
+        <button class="btn btn-danger" id="delBtn" onclick="delSession()" disabled>🗑 删除</button>
+      </div>
+    </div>
+    <div class="msg-box" id="msgBox">
+      <div class="empty">← 在左侧选择一个会话，或新建一个开始对话<br><br>直接在下方输入框发需求即可（等同 QQ 里发 /ai #编号 &lt;需求&gt;）</div>
+    </div>
+
+    <!-- 待确认面板 -->
+    <div class="pending-box" id="pendingBox" hidden>
+      <div class="pending-q" id="pendingQ"></div>
+      <div class="pending-options" id="pendingOptions"></div>
+      <div class="say-row">
+        <input type="text" id="sayInput" placeholder="或自由补充说明…（Enter 发送）">
+        <button class="btn btn-primary" onclick="sendSay()">补充</button>
+      </div>
+    </div>
+
+    <!-- 输入栏 -->
+    <div class="inputbar">
+      <textarea id="msgInput" placeholder="给 AI 发需求 / 指令…（Enter 发送，Shift+Enter 换行）"></textarea>
+      <button class="btn btn-primary" id="sendBtn" onclick="sendMsg()">发送</button>
+    </div>
+  </section>
+</div>
+
+<script>
+/* ═══════════ 工具 ═══════════ */
+const TOKEN_KEY = 'zcbot_token';
+
+function escapeHtml(s) {
+  if (s === null || s === undefined) return '';
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function api(url, options = {}) {
+  const opts = { ...options, headers: { ...(options.headers || {}) } };
+  const token = localStorage.getItem(TOKEN_KEY) || '';
+  if (token) opts.headers['Authorization'] = 'Bearer ' + token;
+  if (opts.body && typeof opts.body === 'string') opts.headers['Content-Type'] = 'application/json';
+  let res;
+  try {
+    res = await fetch(url, opts);
+  } catch (e) {
+    return { code: -1, msg: '网络错误: ' + e.message };
+  }
+  let data = null;
+  try { data = await res.json(); } catch (e) { /* 非 JSON */ }
+  if (res.status === 401) {
+    localStorage.removeItem(TOKEN_KEY);
+    location.href = '/login.html';
+    return null;
+  }
+  return data || { code: -1, msg: '接口返回异常' };
+}
+
+function $(id) { return document.getElementById(id); }
+
+/* ═══════════ 状态 ═══════════ */
+let currentCode = null;
+let sessionsCache = [];
+let lastMsgCount = -1;
+let lastProgressCount = 0;
+
+function setStatus(text, cls) {
+  $('statusText').textContent = text;
+  const dot = $('statusBar').querySelector('.dot');
+  dot.className = 'dot ' + (cls || 'dot-idle');
+}
+
+/* ═══════════ 会话列表 ═══════════ */
+async function loadSessions() {
+  const r = await api('/api/llm_webui/sessions');
+  if (!r || r.code !== 0) return;
+  const data = r.data || {};
+  sessionsCache = data.sessions || [];
+  const current = data.current;
+  if (current && (!currentCode || currentCode !== current)) {
+    currentCode = current;
+  }
+  renderSessions();
+  if (!currentCode && sessionsCache.length) {
+    currentCode = sessionsCache[0].code;
+  }
+}
+
+function renderSessions() {
+  const list = $('sessionList');
+  if (!sessionsCache.length) {
+    list.innerHTML = '<div class="empty">还没有会话<br>点上方「新建会话」开始</div>';
+    return;
+  }
+  list.innerHTML = sessionsCache.map(s => {
+    const active = s.code === currentCode ? ' active' : '';
+    const badge = s.running ? '<span class="s-badge badge-run">运行中</span>'
+      : (s.waiting ? '<span class="s-badge badge-wait">待确认</span>' : '');
+    const title = s.title || '(无标题)';
+    return `<div class="session-item${active}" data-code="${escapeHtml(s.code)}" onclick="openSession('${escapeHtml(s.code)}')">
+      <div class="s-code">#${escapeHtml(s.code)}</div>
+      <div class="s-title">${escapeHtml(title)}</div>
+      <div class="s-meta">${escapeHtml(s.status || 'idle')}${s.is_current ? ' · 当前' : ''}</div>
+      ${badge}
+      <button class="badge-del" title="删除会话" onclick="event.stopPropagation();delSession('${escapeHtml(s.code)}')">✕</button>
+    </div>`;
+  }).join('');
+}
+
+async function openSession(code) {
+  if (!code) return;
+  currentCode = code;
+  const r = await api('/api/llm_webui/current', {
+    method: 'PUT',
+    body: JSON.stringify({ code })
+  });
+  lastMsgCount = -1;
+  lastProgressCount = 0;
+  renderSessions();
+  await loadMessages();
+}
+
+async function newSession() {
+  const title = prompt('新会话标题（可选）:');
+  if (title === null) return;
+  const r = await api('/api/llm_webui/sessions', {
+    method: 'POST',
+    body: JSON.stringify({ title: title || '' })
+  });
+  if (r && r.code === 0) {
+    currentCode = r.data.code;
+    lastMsgCount = -1;
+    await loadSessions();
+    await loadMessages();
+  } else if (r) {
+    alert(r.msg || '创建失败');
+  }
+}
+
+/* ═══════════ 消息 ═══════════ */
+async function loadMessages() {
+  if (!currentCode) {
+    $('msgBox').innerHTML = '<div class="empty">← 在左侧选择一个会话，或新建一个开始对话</div>';
+    return;
+  }
+  const r = await api(`/api/llm_webui/sessions/${currentCode}/messages`);
+  if (!r || r.code !== 0) return;
+  const data = r.data || {};
+  const conv = data.conv || {};
+  $('chatTitle').textContent = `#${currentCode}${conv.title ? ' · ' + conv.title : ''}`;
+
+  const msgs = data.messages || [];
+  if (msgs.length !== lastMsgCount) {
+    renderMessages(msgs);
+    lastMsgCount = msgs.length;
+  }
+
+  // 待确认面板
+  const pending = data.pending;
+  if (pending && pending.question) {
+    $('pendingBox').hidden = false;
+    $('pendingQ').textContent = '🤔 ' + pending.question;
+    const optsHtml = (pending.options || []).map((o, i) =>
+      `<button class="opt-btn" onclick="chooseOption(${i + 1})">${i + 1}. ${escapeHtml(o)}</button>`
+    ).join('');
+    $('pendingOptions').innerHTML = optsHtml;
+  } else {
+    $('pendingBox').hidden = true;
+  }
+
+  // 运行状态
+  const running = !!data.running;
+  $('stopBtn').disabled = !running;
+  $('contBtn').disabled = false;
+  $('sendBtn').disabled = false;
+  if (running) setStatus('AI 运行中', 'dot-running');
+  else if (pending && pending.question) setStatus('等待确认', 'dot-waiting');
+  else setStatus('空闲', 'dot-idle');
+}
+
+function renderMessages(msgs) {
+  const box = $('msgBox');
+  if (!msgs.length) {
+    box.innerHTML = '<div class="empty">这个会话还没有消息<br>直接在下方输入框发需求开始</div>';
+    return;
+  }
+  const mapRole = { user: '你', assistant: 'AI', system: '系统' };
+  box.innerHTML = msgs.map(m => {
+    const role = m.role || 'assistant';
+    const content = m.content || '';
+    const label = mapRole[role] || role;
+    if (role === 'system') {
+      return `<div class="msg system"><div class="bubble">${escapeHtml(content)}</div></div>`;
+    }
+    return `<div class="msg ${role}">
+      <div class="role-label">${label}</div>
+      <div class="bubble">${escapeHtml(content)}</div>
+    </div>`;
+  }).join('');
+  box.scrollTop = box.scrollHeight;
+}
+
+/* ═══════════ 实时进度 ═══════════ */
+async function loadProgress() {
+  if (!currentCode) return;
+  const r = await api(`/api/llm_webui/sessions/${currentCode}/progress`);
+  if (!r || r.code !== 0) return;
+  const items = r.data.items || [];
+  if (!items.length) return;
+  const box = $('msgBox');
+  const empty = box.querySelector('.empty');
+  if (empty) box.innerHTML = '';
+  items.forEach(it => {
+    const div = document.createElement('div');
+    div.className = 'msg progress';
+    div.innerHTML = `<div class="bubble">⏳ ${escapeHtml(it.text || '')}</div>`;
+    box.appendChild(div);
+  });
+  box.scrollTop = box.scrollHeight;
+  lastMsgCount = -1; // 强制下次刷新消息区
+}
+
+/* ═══════════ 操作 ═══════════ */
+async function sendMsg() {
+  const input = $('msgInput');
+  const text = input.value.trim();
+  if (!text) return;
+  if (!currentCode) {
+    alert('请先新建或选择一个会话');
+    return;
+  }
+  input.value = '';
+  $('sendBtn').disabled = true;
+  const r = await api(`/api/llm_webui/sessions/${currentCode}/send`, {
+    method: 'POST',
+    body: JSON.stringify({ text })
+  });
+  $('sendBtn').disabled = false;
+  if (r && r.code !== 0 && r.code !== -1) alert(r.msg || '发送失败');
+  lastMsgCount = -1;
+  lastProgressCount = 0;
+  await loadSessions();
+  await loadMessages();
+}
+
+async function chooseOption(num) {
+  if (!currentCode) return;
+  $('pendingBox').hidden = true;
+  const r = await api(`/api/llm_webui/sessions/${currentCode}/option`, {
+    method: 'POST',
+    body: JSON.stringify({ num })
+  });
+  if (r && r.code !== 0) alert(r.msg || '回复失败');
+  lastMsgCount = -1;
+  lastProgressCount = 0;
+  await loadSessions();
+  await loadMessages();
+}
+
+async function sendSay() {
+  const input = $('sayInput');
+  const text = input.value.trim();
+  if (!text || !currentCode) return;
+  input.value = '';
+  $('pendingBox').hidden = true;
+  const r = await api(`/api/llm_webui/sessions/${currentCode}/say`, {
+    method: 'POST',
+    body: JSON.stringify({ text })
+  });
+  if (r && r.code !== 0) alert(r.msg || '补充失败');
+  lastMsgCount = -1;
+  lastProgressCount = 0;
+  await loadSessions();
+  await loadMessages();
+}
+
+async function stopSession() {
+  if (!currentCode) return;
+  const r = await api(`/api/llm_webui/sessions/${currentCode}/stop`, { method: 'POST' });
+  if (r && r.code !== 0) alert(r.msg || '停止失败');
+}
+
+async function contSession() {
+  if (!currentCode) return;
+  const text = prompt('修改需求（基于当前进度调整后续步骤）:');
+  if (!text) return;
+  const r = await api('/api/llm_webui/continue', {
+    method: 'POST',
+    body: JSON.stringify({ text })
+  });
+  if (r && r.code !== 0) alert(r.msg || '提交失败');
+  lastMsgCount = -1;
+  lastProgressCount = 0;
+  await loadSessions();
+  await loadMessages();
+}
+
+async function delSession(code) {
+  const c = code || currentCode;
+  if (!c) return;
+  if (!confirm(`确定删除会话 #${c}？此操作不可恢复`)) return;
+  const r = await api(`/api/llm_webui/sessions/${c}/delete`, { method: 'POST' });
+  if (r && r.code === 0) {
+    if (c === currentCode) currentCode = null;
+    lastMsgCount = -1;
+    await loadSessions();
+    await loadMessages();
+  } else if (r) {
+    alert(r.msg || '删除失败');
+  }
+}
+
+/* ═══════════ 初始化 ═══════════ */
+async function init() {
+  const r = await api('/api/llm_webui/info');
+  if (r && r.code === 0) {
+    const d = r.data || {};
+    const cfg = d.llm_configured ? '✅ LLM 已配置' : '⚠️ 未配置 LLM（请到插件配置设置 base_url）';
+    $('hdrInfo').textContent = `超管 QQ: ${d.super_qq || '未配置'} · ${cfg}`;
+  }
+  await loadSessions();
+  if (!currentCode && sessionsCache.length) {
+    currentCode = sessionsCache[0].code;
+  }
+  await loadMessages();
+}
+
+// 键盘事件
+$('msgInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); }
+});
+$('sayInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); sendSay(); }
+});
+
+init();
+
+// 每 3 秒轮询：会话状态 / 消息 / 实时进度
+setInterval(async () => {
+  await loadSessions();
+  await loadMessages();
+  await loadProgress();
+}, 3000);
+</script>
+</body>
+</html>

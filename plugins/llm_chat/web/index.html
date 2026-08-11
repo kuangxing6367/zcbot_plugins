@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM 对话控制台</title>
+<style>
+  :root{
+    --bg:#0f1115; --card:#171a21; --card2:#1d212b; --border:#2a2f3a;
+    --text:#e6e8ee; --dim:#8b93a5; --accent:#4f8cff; --ok:#34c759; --err:#ff5b5b;
+    --warn:#ffb020; --mono:ui-monospace,SFMono-Regular,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;font-size:14px;line-height:1.6;padding:20px;max-width:1200px;margin:0 auto}
+  h1{font-size:20px;display:flex;align-items:center;gap:8px;margin-bottom:4px}
+  .sub{color:var(--dim);font-size:12px;margin-bottom:16px}
+  .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;border-bottom:1px solid var(--border);padding-bottom:10px}
+  .tab{padding:7px 16px;border-radius:8px;cursor:pointer;background:var(--card);border:1px solid var(--border);color:var(--dim);user-select:none;transition:.15s}
+  .tab:hover{color:var(--text)}
+  .tab.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:14px}
+  .card h3{font-size:15px;margin-bottom:12px;display:flex;align-items:center;gap:6px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:14px}
+  .stat{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
+  .stat .v{font-size:26px;font-weight:700}
+  .stat .l{color:var(--dim);font-size:12px;margin-top:2px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;color:var(--dim);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap}
+  td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top;word-break:break-all}
+  tr:hover td{background:var(--card2)}
+  .badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;border:1px solid var(--border)}
+  .badge.ok{color:var(--ok);border-color:var(--ok)}
+  .badge.err{color:var(--err);border-color:var(--err)}
+  .badge.dim{color:var(--dim)}
+  .mono{font-family:var(--mono);font-size:12px;background:var(--card2);border-radius:4px;padding:1px 6px}
+  .desc{color:var(--dim);font-size:12px;margin-top:2px}
+  .empty{color:var(--dim);text-align:center;padding:30px 0}
+  .fn-item{background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+  .fn-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+  .fn-name{font-family:var(--mono);font-size:14px;color:var(--accent);font-weight:600}
+  .fn-plugin{font-size:11px;color:var(--dim)}
+  .params{margin-top:8px;background:#13161c;border:1px solid var(--border);border-radius:8px;padding:10px;font-family:var(--mono);font-size:12px;max-height:260px;overflow:auto;white-space:pre-wrap}
+  .log-args{font-family:var(--mono);font-size:11px;color:var(--dim);max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .toolbar{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+  .btn{background:var(--card2);border:1px solid var(--border);color:var(--text);padding:6px 14px;border-radius:8px;cursor:pointer;font-size:13px;transition:.15s}
+  .btn:hover{border-color:var(--accent);color:var(--accent)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.primary:hover{opacity:.85;color:#fff}
+  .input,.select{background:var(--card2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:8px;font-size:13px}
+  .input:focus,.select:focus{outline:none;border-color:var(--accent)}
+  textarea.input{width:100%;min-height:70px;resize:vertical;font-family:var(--mono)}
+  .form-row{display:grid;grid-template-columns:230px 1fr;gap:10px;align-items:center;padding:8px 0;border-bottom:1px dashed var(--border)}
+  .form-row:last-child{border-bottom:none}
+  .form-row label{color:var(--dim);font-size:13px}
+  .form-row label small{display:block;color:var(--dim);font-size:11px;opacity:.75}
+  .switch{position:relative;width:40px;height:22px;display:inline-block}
+  .switch input{opacity:0;width:0;height:0}
+  .slider{position:absolute;cursor:pointer;inset:0;background:var(--card2);border:1px solid var(--border);border-radius:22px;transition:.2s}
+  .slider:before{content:"";position:absolute;width:16px;height:16px;left:2px;top:2px;background:var(--dim);border-radius:50%;transition:.2s}
+  input:checked + .slider{background:var(--accent);border-color:var(--accent)}
+  input:checked + .slider:before{transform:translateX(18px);background:#fff}
+  .toast{position:fixed;bottom:24px;right:24px;z-index:99;background:var(--card2);border:1px solid var(--border);padding:10px 16px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.4);opacity:0;transition:.25s;transform:translateY(8px)}
+  .toast.show{opacity:1;transform:translateY(0)}
+  .toast.ok{border-color:var(--ok)} .toast.err{border-color:var(--err)}
+  .p-card{background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px;display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+  .p-name{font-weight:600}
+  .p-prompt{color:var(--dim);font-size:12px;margin-top:4px}
+  .p-cur{color:var(--ok);font-size:11px;border:1px solid var(--ok);border-radius:20px;padding:1px 8px;margin-left:6px}
+  .help{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 16px;color:var(--dim);font-size:12px;margin-top:12px}
+  .help code{background:var(--card2);padding:1px 6px;border-radius:4px;color:var(--accent);font-family:var(--mono)}
+  .tag{font-size:11px;padding:1px 7px;border-radius:6px;background:var(--card2);border:1px solid var(--border);color:var(--dim)}
+</style>
+</head>
+<body>
+  <h1>🤖 LLM 对话控制台</h1>
+  <div class="sub">llm_chat 插件 · 函数列表 / 调用日志 / 统计 / 人格 / 配置 · 数据来自运行时快照，约每 1 次调用后刷新</div>
+
+  <div class="tabs" id="tabs">
+    <div class="tab on" data-tab="overview">📊 概览</div>
+    <div class="tab" data-tab="functions">🛠 函数列表</div>
+    <div class="tab" data-tab="logs">📜 调用日志</div>
+    <div class="tab" data-tab="personas">🎭 人格</div>
+    <div class="tab" data-tab="config">⚙️ 配置</div>
+  </div>
+
+  <div class="toolbar">
+    <button class="btn primary" onclick="refreshAll()">⟳ 刷新</button>
+    <span class="tag" id="genTime">未加载</span>
+  </div>
+
+  <div id="content"><div class="empty">加载中…</div></div>
+  <div class="toast" id="toast"></div>
+
+<script>
+const TOKEN_KEY = 'zcbot_token';
+function getToken(){ return localStorage.getItem(TOKEN_KEY) || ''; }
+
+async function api(url, options = {}){
+  const opts = { ...options, headers: { ...(options.headers || {}) } };
+  const token = getToken();
+  if (token) opts.headers['Authorization'] = 'Bearer ' + token;
+  if (opts.body && typeof opts.body === 'string' && !opts.headers['Content-Type']) {
+    opts.headers['Content-Type'] = 'application/json';
+  }
+  let res;
+  try { res = await fetch(url, opts); }
+  catch(e){ toast('网络错误: ' + e.message, 'err'); return null; }
+  if (res.status === 401) { location.href = '/login.html'; return null; }
+  try { return await res.json(); } catch(e){ return null; }
+}
+
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function toast(msg, type='ok'){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + type;
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.className = 'toast', 2200);
+}
+function fmtTime(ts){ if(!ts) return '-'; const d = new Date(ts*1000); return d.toLocaleString(); }
+
+/* ───── 数据加载 ───── */
+let SNAP = null;        // 快照（函数/日志/统计/人格/配置）
+let CONF = null;        // 配置 schema + values
+let CMDS = null;        // 命令列表
+
+async function loadSnapshot(){
+  const r = await api('/api/plugins/llm_chat/file/_webui_data.json');
+  if (r && r.code === 0 && r.data && r.data.content) {
+    try { SNAP = JSON.parse(r.data.content); } catch(e){ SNAP = null; toast('快照解析失败', 'err'); }
+  } else { SNAP = null; }
+}
+async function loadConf(){
+  const r = await api('/api/plugins/llm_chat/config_schema');
+  if (r && r.code === 0) CONF = r.data; else CONF = null;
+}
+async function loadCmds(){
+  const r = await api('/api/plugins/llm_chat/commands');
+  if (r && r.code === 0) CMDS = r.data; else CMDS = null;
+}
+async function refreshAll(){
+  await Promise.all([loadSnapshot(), loadConf(), loadCmds()]);
+  const el = document.getElementById('genTime');
+  el.textContent = SNAP && SNAP.generated_at ? ('快照时间: ' + SNAP.generated_at) : '快照未生成（重载插件后自动生成）';
+  render();
+}
+
+/* ───── 渲染 ───── */
+let CUR_TAB = 'overview';
+function render(){
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.tab === CUR_TAB));
+  const c = document.getElementById('content');
+  if (CUR_TAB === 'overview') c.innerHTML = renderOverview();
+  else if (CUR_TAB === 'functions') c.innerHTML = renderFunctions();
+  else if (CUR_TAB === 'logs') c.innerHTML = renderLogs();
+  else if (CUR_TAB === 'personas') c.innerHTML = renderPersonas();
+  else if (CUR_TAB === 'config') c.innerHTML = renderConfig();
+}
+
+function renderOverview(){
+  const s = SNAP || {};
+  const st = s.stats || {};
+  const funcs = s.functions || [];
+  const logs = s.tool_logs || [];
+  const cmds = (CMDS && (CMDS.static_commands || [])) || [];
+  const okN = logs.filter(l => l.ok).length;
+  return `
+    <div class="grid">
+      <div class="stat"><div class="v">${esc(st.chats ?? 0)}</div><div class="l">本进程对话次数</div></div>
+      <div class="stat"><div class="v">${esc(st.tool_calls ?? 0)}</div><div class="l">工具调用次数（失败 ${esc(st.tool_errors ?? 0)}）</div></div>
+      <div class="stat"><div class="v">${esc(funcs.length)}</div><div class="l">可调用函数</div></div>
+      <div class="stat"><div class="v">${esc(logs.length)}</div><div class="l">日志条数（成功 ${okN}）</div></div>
+    </div>
+    <div class="card"><h3>📋 已注册命令（${cmds.length}）</h3>
+      <table><tr><th>命令</th><th>说明</th></tr>
+      ${cmds.map(c => `<tr><td class="mono">${esc(c.pattern)}</td><td>${esc(c.description || '-')}</td></tr>`).join('') || '<tr><td colspan="2" class="empty">无</td></tr>'}
+      </table>
+    </div>
+    <div class="card"><h3>🕐 最近函数调用（最新 5 条）</h3>
+      ${logs.slice(0,5).map(l => `
+        <div class="fn-item">
+          <div class="fn-head"><span class="badge ${l.ok ? 'ok' : 'err'}">${l.ok ? '成功' : '失败'}</span>
+          <span class="fn-name">${esc(l.name)}</span><span class="tag">${esc(l.time)}</span>
+          <span class="tag">${esc(l.user_id || '-')}</span><span class="tag">${esc(l.group_id || '私聊')}</span>
+          <span class="tag">${esc(l.cost)}s</span></div>
+          <div class="desc">参数: ${esc(JSON.stringify(l.args || {}))}</div>
+          <div class="desc">结果: ${esc(String(l.result || '').slice(0,120))}</div>
+        </div>`).join('') || '<div class="empty">暂无调用记录</div>'}
+    </div>
+  `;
+}
+
+function renderFunctions(){
+  const funcs = (SNAP && SNAP.functions) || [];
+  if (!funcs.length) return '<div class="card"><div class="empty">暂无函数（快照未生成？请重载插件）</div></div>';
+  return `<div class="card"><h3>🛠 LLM 可调用函数（${funcs.length} 个）</h3>
+    ${funcs.map(f => `
+      <div class="fn-item">
+        <div class="fn-head">
+          <span class="fn-name">${esc(f.name)}</span>
+          <span class="fn-plugin">来源: ${esc(f.plugin_name || 'llm_chat')}</span>
+        </div>
+        <div class="desc">${esc(f.description || '（无描述）')}</div>
+        <details><summary style="cursor:pointer;color:var(--accent);font-size:12px;margin-top:6px">参数 Schema（点击展开）</summary>
+        <div class="params">${esc(JSON.stringify(f.parameters || {}, null, 2))}</div></details>
+      </div>`).join('')}
+  </div>`;
+}
+
+let logFilter = '';
+function renderLogs(){
+  const logs = (SNAP && SNAP.tool_logs) || [];
+  const kw = logFilter.toLowerCase();
+  const filtered = logs.filter(l => !kw || (l.name || '').toLowerCase().includes(kw) || (l.user_id || '').includes(kw));
+  return `
+    <div class="toolbar">
+      <input class="input" id="logKw" placeholder="按函数名 / QQ 过滤" value="${esc(logFilter)}"
+             oninput="logFilter=this.value;renderLogs()" style="min-width:200px">
+      <span class="tag">共 ${filtered.length} / ${logs.length} 条</span>
+    </div>
+    <div class="card"><table>
+      <tr><th>时间</th><th>函数</th><th>状态</th><th>QQ</th><th>群</th><th>参数</th><th>耗时</th><th>结果 / 错误</th></tr>
+      ${filtered.map(l => `
+        <tr>
+          <td class="mono" style="white-space:nowrap">${esc(l.time)}</td>
+          <td><span class="mono">${esc(l.name)}</span></td>
+          <td><span class="badge ${l.ok ? 'ok' : 'err'}">${l.ok ? '成功' : '失败'}</span></td>
+          <td class="mono">${esc(l.user_id || '-')}</td>
+          <td class="mono">${esc(l.group_id || '-')}</td>
+          <td><div class="log-args" title="${esc(JSON.stringify(l.args || {}))}">${esc(JSON.stringify(l.args || {}))}</div></td>
+          <td class="mono">${esc(l.cost)}s</td>
+          <td class="desc" style="max-width:280px">${esc(l.error || String(l.result || '').slice(0,150))}</td>
+        </tr>`).join('') || '<tr><td colspan="8" class="empty">暂无调用记录</td></tr>'}
+    </table></div>
+  `;
+}
+
+function renderPersonas(){
+  const personas = (SNAP && SNAP.personas) || [];
+  const cur = (SNAP && SNAP.current_persona) || '';
+  return `
+    <div class="card"><h3>🎭 人格预设（${personas.length}）<span class="tag">当前: ${esc(cur || '默认人格')}</span></h3>
+      ${personas.map(p => `
+        <div class="p-card">
+          <div>
+            <div><span class="p-name">${esc(p.name)}</span>${p.name === cur ? '<span class="p-cur">使用中</span>' : ''}
+              <span class="tag">${p.enabled ? '启用' : '停用'}</span></div>
+            <div class="p-prompt">${esc(String(p.prompt || '').slice(0,160))}</div>
+          </div>
+        </div>`).join('') || '<div class="empty">暂无人格预设</div>'}
+      <div class="help">
+        💡 人格的新增 / 切换 / 删除请在 QQ 内用指令操作（WebUI 只读展示）：<br>
+        <code>/人格 list</code> 查看 · <code>/人格 use 名称</code> 切换 · <code>/人格 off</code> 回默认 ·<br>
+        <code>/人格 add 名称 人格设定描述</code> 新增（超管） · <code>/人格 del 名称</code> 删除（超管）
+      </div>
+    </div>
+  `;
+}
+
+function renderConfig(){
+  if (!CONF || !CONF.schema) return '<div class="card"><div class="empty">无配置项或未加载</div></div>';
+  const schema = CONF.schema || {};
+  const values = CONF.values || {};
+  const keys = Object.keys(schema);
+  return `
+    <div class="card"><h3>⚙️ 插件配置（${keys.length} 项）</h3>
+      ${keys.map(k => renderField(k, schema[k], values[k])).join('')}
+      <div style="margin-top:14px"><button class="btn primary" onclick="saveConfig()">💾 保存全部配置</button>
+      <button class="btn" onclick="reloadConf()">↻ 放弃修改</button></div>
+    </div>
+  `;
+}
+
+function renderField(key, spec, val){
+  const type = spec.type || 'string';
+  const label = spec.desc || key;
+  let input;
+  if (type === 'boolean' || type === 'bool') {
+    const on = String(val === undefined ? spec.default : val) === 'true' || val === true;
+    input = `<label class="switch"><input type="checkbox" data-key="${esc(key)}" ${on ? 'checked' : ''} onchange="cfgChanged(this)"><span class="slider"></span></label>`;
+  } else if (type === 'number' || type === 'int' || type === 'float') {
+    input = `<input class="input" type="number" step="any" data-key="${esc(key)}" value="${esc(val === undefined ? spec.default : val)}" oninput="cfgChanged(this)" style="max-width:160px">`;
+  } else if (String(val || '').length > 80 || String(spec.default || '').length > 80) {
+    input = `<textarea class="input" data-key="${esc(key)}" oninput="cfgChanged(this)" rows="3">${esc(val === undefined ? spec.default : val)}</textarea>`;
+  } else {
+    input = `<input class="input" data-key="${esc(key)}" value="${esc(val === undefined ? spec.default : val)}" oninput="cfgChanged(this)" style="max-width:320px">`;
+  }
+  return `<div class="form-row"><label>${esc(key)}<small>${esc(label)}</small></label>${input}</div>`;
+}
+
+let cfgDirty = {};
+function cfgChanged(el){
+  const k = el.dataset.key;
+  const spec = CONF.schema[k] || {};
+  const t = spec.type || 'string';
+  if (t === 'boolean' || t === 'bool') cfgDirty[k] = el.checked;
+  else if (t === 'number' || t === 'int' || t === 'float') cfgDirty[k] = el.value === '' ? (spec.default ?? 0) : Number(el.value);
+  else cfgDirty[k] = el.value;
+}
+function reloadConf(){ cfgDirty = {}; loadConf().then(render); }
+
+async function saveConfig(){
+  const keys = Object.keys(cfgDirty);
+  if (!keys.length) { toast('没有改动', 'err'); return; }
+  const body = {};
+  keys.forEach(k => body[k] = cfgDirty[k]);
+  const r = await api('/api/plugins/llm_chat/config_schema', { method: 'PUT', body: JSON.stringify(body) });
+  if (r && r.code === 0) { toast('✅ 配置已保存（部分项需重载插件生效）'); cfgDirty = {}; await loadConf(); render(); }
+  else toast('保存失败: ' + ((r && r.msg) || '未知错误'), 'err');
+}
+
+/* ───── 初始化 ───── */
+document.getElementById('tabs').addEventListener('click', e => {
+  const t = e.target.closest('.tab');
+  if (!t) return;
+  CUR_TAB = t.dataset.tab;
+  render();
+});
+refreshAll();
+setInterval(() => { loadSnapshot().then(render); }, 15000); // 每 15s 自动刷新快照
+</script>
+</body>
+</html>

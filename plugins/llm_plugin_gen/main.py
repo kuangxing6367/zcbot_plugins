@@ -16,6 +16,10 @@ LLM 开发助手插件
   10. /ai stop             — 暂停当前正在运行的会话（也可 /ai #编号 stop）
   11. /pluginlist          — 查看已加载插件
 
+新增 AI 能力（直接对 AI 说即可）：
+  - 「检查框架更新」→ 调用 check_framework_update（对比 GitHub Release 与本地 VERSION）
+  - 「更新框架」→ 调用 update_framework（下载最新代码→自动备份到 data/backups/→只覆盖白名单文件，需重启生效）
+
 工作流（AI 项目助手规范 V1.0，四阶段闭环）：
 - 阶段一 启动：后台深度思考，只提 1~3 个口语化疑点（ask_user 提交）
 - 阶段二 规划：拆解为恰好 6 项待办清单（每项 ≤10 字），用户确认后才动工
@@ -40,15 +44,21 @@ import fnmatch
 import json
 import os
 import re
+import time
 import traceback
+from datetime import datetime, timedelta
+from functools import wraps
 
-import httpx
+from flask import Flask, jsonify, request
+
+# ========== 第三方库懒加载说明 ==========
+# httpx 为可选依赖（仅在发起 LLM 请求时按需 import），见 _chat_once
 
 __plugin_meta__ = {
     "name": "LLM 开发助手",
-    "version": "1.6.0",
+    "version": "1.7.0",
     "author": "ZGRIC",
-    "desc": "对话式 LLM 插件开发（AI 项目助手工作流 V1.0：澄清疑点→6 项待办确认→逐项广播→stop/continue 干预，全异步）",
+    "desc": "对话式 LLM 插件开发（AI 项目助手工作流 V1.0：澄清疑点→6 项待办确认→逐项广播→stop/continue 干预，全异步；支持检查/更新框架源码）",
     "priority": 100,
 }
 
@@ -328,6 +338,28 @@ _TOOLS = [
             "parameters": {"type": "object", "properties": {}},
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "check_framework_update",
+            "description": "检查框架是否有新版本（对比 GitHub Release 与本地 VERSION，返回本地/最新版本与是否有更新）",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_framework",
+            "description": "从 GitHub 更新框架源码：下载最新代码→自动备份旧 framework 到 data/backups/→只覆盖 framework/web/sql/main.py 等白名单文件（保留 plugins/、data/、config.yaml），更新后需重启生效。确认执行时请传 confirm='yes'",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "confirm": {"type": "string", "description": "确认标记，传 'yes' 才执行更新，否则只返回说明"},
+                },
+                "required": ["confirm"],
+            },
+        },
+    },
 ]
 
 
@@ -368,6 +400,10 @@ def register(ctx):
         require_superuser=True,
         description="列出当前已加载的插件",
     )
+
+    # WebUI 独立页面：AI 对话控制台（网页端以超管 QQ 身份操作，与 QQ 群数据互通）
+    ctx.webui("AI 助手", "index.html", icon="🤖", order=5)
+    _register_webui_routes(ctx)
 
 
 # ---------------------------------------------------------------- 配置
@@ -462,6 +498,15 @@ async def _init_db(ctx) -> None:
             "prompt_tokens INT DEFAULT 0, "
             "completion_tokens INT DEFAULT 0, "
             "total_tokens INT DEFAULT 0, "
+            "created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+        )
+        # WebUI 实时进度表（网页轮询展示 AI 每轮说明，读取后清理）
+        await ctx.db_execute_async(
+            "CREATE TABLE IF NOT EXISTS llm_webui_progress ("
+            "id INT PRIMARY KEY AUTO_INCREMENT, "
+            "user_id VARCHAR(32) NOT NULL, "
+            "code VARCHAR(8) NOT NULL, "
+            "text TEXT, "
             "created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
         )
         # 索引（MySQL 方言；SQLite 模式由框架自动翻译）。
@@ -755,12 +800,24 @@ def _llm_payload(ctx, messages, tools=None, tool_choice=None) -> dict:
 
 async def _chat_once(ctx, messages, tools=None, tool_choice=None) -> dict:
     """单次调用（httpx 异步），返回 {"message":..., "usage":{...}}"""
+    import httpx  # 懒加载：仅在真正发起 LLM 请求时引入（省 ~2-5MB 常驻内存）
     base_url = str(_get_config(ctx, "base_url", "")).strip().rstrip('/')
     url = base_url + "/chat/completions"
     payload = _llm_payload(ctx, messages, tools=tools, tool_choice=tool_choice)
     # 每次新建 AsyncClient：避免跨事件循环复用被关闭的客户端（插件可热重载）
-    async with httpx.AsyncClient(timeout=httpx.Timeout(300.0)) as client:
-        resp = await client.post(url, headers=_llm_headers(ctx), json=payload)
+    # connect 限时 10s：避免网络抖动时长时间挂起；ConnectError/ConnectTimeout 自动重试（1s/3s 退避）
+    async with httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0)) as client:
+        last_exc = None
+        for attempt in range(3):
+            try:
+                resp = await client.post(url, headers=_llm_headers(ctx), json=payload)
+                break
+            except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+                last_exc = e
+                if attempt < 2:
+                    await asyncio.sleep(1 if attempt == 0 else 3)
+        else:
+            raise last_exc
     if resp.status_code != 200:
         raise RuntimeError(f"LLM 接口返回 HTTP {resp.status_code}: {resp.text[:300]}")
     data = resp.json()
@@ -808,7 +865,7 @@ async def _chat_with_tools(ctx, messages: list, max_rounds: int = 0, progress_cb
 
         tool_calls = msg.get("tool_calls")
         if not tool_calls:
-            return ("done", content or "", total_usage)
+            return ("done", content or "", {}, total_usage)
 
         # 把 assistant 消息（含 tool_calls）加入历史
         messages.append({"role": "assistant", "content": content, "tool_calls": tool_calls})
@@ -858,6 +915,10 @@ def _resolve_path(ctx, path: str) -> str:
 
 def _execute_tool(ctx, name: str, args: dict):
     """执行 LLM 请求的工具调用"""
+    # 框架更新工具（检查/更新框架源码，独立于文件路径）
+    if name in ("check_framework_update", "update_framework"):
+        return _execute_framework_tool(ctx, name, args)
+
     # 插件管理工具（不依赖 path）
     if name in ("load_plugin", "unload_plugin", "reload_plugin", "list_plugins"):
         return _execute_plugin_tool(ctx, name, args)
@@ -1026,6 +1087,214 @@ def _execute_tool(ctx, name: str, args: dict):
         except OSError as e:
             return f"错误: {e}"
         return f"已重命名: {target} → {dest}"
+
+    return f"错误: 未知工具 {name}"
+
+
+# ---------------------------------------------------------------- 框架更新工具
+
+def _fw_project_root() -> str:
+    """项目根目录：plugins/llm_plugin_gen/main.py → 项目根"""
+    return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def _fw_parse_ver(v: str):
+    """版本字符串 → 可比较元组（提取所有数字段），如 0.0.1-alpha.1-build.5 → (0,0,1,1,5)"""
+    if not v:
+        return None
+    nums = re.findall(r'\d+', v)
+    return tuple(int(n) for n in nums) if nums else None
+
+
+def _fw_url_candidates(url: str) -> list:
+    """生成候选下载地址（按优先级）：配置的加速代理 → 内置 ghproxy 镜像 → 直连 GitHub"""
+    candidates = []
+    proxy = ''
+    try:
+        proxy = str(ctx_get_proxy() or '').strip().rstrip('/')
+    except Exception:
+        proxy = ''
+    if proxy:
+        candidates.append(f"{proxy}/https://{url}")
+    for mirror_host in ('ghproxy.net', 'ghproxy.cn'):
+        candidates.append(f"https://{mirror_host}/https://{url}")
+    candidates.append(url)
+    seen, out = set(), []
+    for u in candidates:
+        if u not in seen:
+            seen.add(u)
+            out.append(u)
+    return out
+
+
+def ctx_get_proxy() -> str:
+    """读取框架配置的 GitHub 加速代理地址（config.yaml github_proxy）"""
+    try:
+        from framework import config as fw_config
+        return fw_config.get('github_proxy', '')
+    except Exception:
+        return ''
+
+
+def _execute_framework_tool(ctx, name: str, args: dict):
+    """执行框架更新工具：check_framework_update（检查更新）/ update_framework（更新框架）"""
+    import shutil
+    import tempfile
+    import time
+    import zipfile
+
+    import requests
+
+    repo = 'kuangxing6367/zcbot'
+    branch = 'main'
+    root = _fw_project_root()
+
+    # 本地版本
+    local_ver = ''
+    try:
+        with open(os.path.join(root, 'VERSION'), 'r', encoding='utf-8') as f:
+            local_ver = f.read().strip()
+    except Exception:
+        pass
+
+    # ---- 检查更新 ----
+    if name == "check_framework_update":
+        release = None
+        try:
+            rresp = requests.get(
+                f"https://api.github.com/repos/{repo}/releases?per_page=30",
+                headers={'Accept': 'application/vnd.github+json'},
+                timeout=15,
+            )
+            if rresp.status_code == 200:
+                releases = rresp.json()
+                if isinstance(releases, list) and releases:
+                    best, best_t = None, None
+                    for rel in releases:
+                        t = rel.get('tag_name') or ''
+                        tv = _fw_parse_ver(t[1:] if t.startswith('v') else t)
+                        if tv is None:
+                            continue
+                        if best_t is None or tv > best_t:
+                            best, best_t = rel, tv
+                    release = best
+        except Exception as e:
+            return f"检查框架更新失败: {e}\n本地版本: {local_ver or '未知'}"
+
+        if not release:
+            return f"检查框架更新失败: 无法获取 GitHub Release（网络或仓库问题）\n本地版本: {local_ver or '未知'}"
+
+        tag = release.get('tag_name', '') or ''
+        remote_ver = tag[1:] if tag.startswith('v') else tag
+        lt, rt = _fw_parse_ver(local_ver), _fw_parse_ver(remote_ver)
+        if lt is not None and rt is not None:
+            n = max(len(lt), len(rt))
+            has_update = (rt + (0,) * (n - len(rt))) > (lt + (0,) * (n - len(lt)))
+        else:
+            has_update = None
+        body = release.get('body') or ''
+        name_msg = (release.get('name') or '').strip()
+        commit_msg = name_msg or (body.split('\n')[0] if body else '') or f"Release {tag}"
+        state = "有新版本 ✅" if has_update else ("已是最新 ✅" if has_update is False else "无法判断 ⚠️")
+        return (
+            f"框架更新检查结果：\n"
+            f"- 本地版本: {local_ver or '未知'}\n"
+            f"- 最新版本: {remote_ver or '未知'}（{state}）\n"
+            f"- 发布说明: {commit_msg}\n"
+            f"- 发布时间: {release.get('published_at', '未知')}\n"
+            f"如需更新请回复继续，我会调用 update_framework 执行（自动备份后覆盖，更新后需重启生效）。"
+        )
+
+    # ---- 更新框架 ----
+    if name == "update_framework":
+        confirm = str(args.get("confirm") or "").strip().lower()
+        if confirm not in ("yes", "true", "1", "确认", "y"):
+            return (
+                "⚠️ 更新框架会覆盖 framework/web/main.py 等代码文件（保留 plugins/、data/、config.yaml），"
+                "更新后需重启框架生效。若确认执行，请以 confirm='yes' 再次调用 update_framework。"
+            )
+
+        # 1) 下载最新代码 ZIP（代理 → 镜像 → 直连）
+        zip_url = f"https://github.com/{repo}/archive/refs/heads/{branch}.zip"
+        tmp_zip = None
+        last_err = ''
+        for zurl in _fw_url_candidates(zip_url):
+            try:
+                resp = requests.get(zurl, timeout=180, stream=True)
+            except Exception as e:
+                last_err = str(e)
+                continue
+            if resp.status_code == 404:
+                return f"更新失败: 仓库或分支不存在 {repo}@{branch}"
+            if resp.status_code != 200:
+                last_err = f'HTTP {resp.status_code}'
+                continue
+            tmp_zip = tempfile.NamedTemporaryFile(delete=False, suffix='.zip')
+            for chunk in resp.iter_content(chunk_size=8192):
+                tmp_zip.write(chunk)
+            tmp_zip.close()
+            break
+        if tmp_zip is None:
+            return f"更新失败: 下载失败 {last_err}"
+
+        try:
+            # 2) 解压到临时目录
+            tmp_dir = tempfile.mkdtemp(prefix='zcbot_fw_')
+            try:
+                with zipfile.ZipFile(tmp_zip.name, 'r') as zf:
+                    zf.extractall(tmp_dir)
+            except zipfile.BadZipFile:
+                return "更新失败: 下载的 ZIP 文件无效"
+
+            entries = [e for e in os.listdir(tmp_dir) if os.path.isdir(os.path.join(tmp_dir, e))]
+            src_root = os.path.join(tmp_dir, entries[0]) if entries else tmp_dir
+
+            # 3) 备份旧 framework 目录
+            backup_dir = os.path.join(root, 'data', 'backups')
+            os.makedirs(backup_dir, exist_ok=True)
+            fw_backup = os.path.join(backup_dir, f'framework.{int(time.time())}')
+            old_fw = os.path.join(root, 'framework')
+            if os.path.isdir(old_fw):
+                shutil.copytree(old_fw, fw_backup)
+
+            # 4) 覆盖白名单内的代码/配置文件（用户数据一律跳过）
+            include = {
+                'framework', 'web', 'sql', 'main.py', 'requirements.txt',
+                'start.sh', '.gitignore', 'README.md', 'LICENSE', 'VERSION',
+            }
+            updated = []
+            for item in os.listdir(src_root):
+                if item not in include:
+                    continue
+                src = os.path.join(src_root, item)
+                dst = os.path.join(root, item)
+                if os.path.isdir(src):
+                    if os.path.isdir(dst):
+                        shutil.rmtree(dst, ignore_errors=True)
+                    shutil.copytree(src, dst)
+                elif os.path.isfile(src):
+                    os.makedirs(os.path.dirname(dst), exist_ok=True) if os.path.dirname(dst) else None
+                    shutil.copy2(src, dst)
+                updated.append(item)
+
+            # 5) 清理临时文件
+            try:
+                os.unlink(tmp_zip.name)
+            except Exception:
+                pass
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+            return (
+                f"✅ 框架已更新（{len(updated)} 项: {', '.join(updated)}）\n"
+                f"📦 旧代码已备份到 data/backups/{os.path.basename(fw_backup)}\n"
+                f"⚠️ 请重启框架生效（可对 AI 说「重启框架」或手动重启）。"
+            )
+        finally:
+            try:
+                if tmp_zip and os.path.isfile(tmp_zip.name):
+                    os.unlink(tmp_zip.name)
+            except Exception:
+                pass
 
     return f"错误: 未知工具 {name}"
 
@@ -1311,12 +1580,18 @@ async def _run_ai(ctx, event, code, prompt, resumed_msgs=None):
         # 进度回调：每轮 AI 说明文本实时发到群里
         async def progress(text):
             await _send(ctx, event, f"[#{code}] {_truncate(text, 800)}")
+            try:
+                await ctx.db_execute_async(
+                    "INSERT INTO llm_webui_progress (user_id, code, text) VALUES (%s, %s, %s)",
+                    (user_id, code, _truncate(text, 2000)))
+            except Exception:
+                pass
 
         outcome = await _chat_with_tools(ctx, msgs, progress_cb=progress)
 
         if outcome[0] == "ask":
             _question, options, usage = outcome[1], outcome[2], outcome[3]
-            _pending_ask[key] = {"msgs": msgs, "options": options}
+            _pending_ask[key] = {"msgs": msgs, "options": options, "question": _question}
             await _record_usage(ctx, user_id, usage)
             await _set_status(ctx, user_id, code, "waiting")
             text = f"🤖 会话 #{code} 需要你确认：\n{_question}"
@@ -1327,7 +1602,7 @@ async def _run_ai(ctx, event, code, prompt, resumed_msgs=None):
             return
 
         _result = outcome[1] or "（AI 未返回文本内容）"
-        usage = outcome[3]
+        usage = outcome[3] if len(outcome) > 3 else {}
         await _append_session(ctx, user_id, code, "assistant", _result)
         await _record_usage(ctx, user_id, usage)
         cost = ""
@@ -1495,3 +1770,368 @@ async def handle_list_plugins(event, match):
             lines.append(f"- {meta.get('name', name)} ({name}) v{meta.get('version', '?')}")
         text = "\n".join(lines)
     await _send(ctx, event, text)
+
+# ══════════════════════════════════════════════════════════
+#  WebUI 后端 API（网页控制台：以超管 QQ 身份操作，与 QQ 群数据互通）
+#  网页端身份 = users 表 role=super 的超管 QQ，因此网页与 QQ 群共享同一套会话
+# ══════════════════════════════════════════════════════════
+
+# 超管 QQ 缓存: {"qq": str|None, "ts": float}
+_web_super_cache = {"qq": None, "ts": 0.0}
+
+
+class _WebEvent:
+    """网页端伪事件：以超管 QQ 身份执行（复用 QQ 端会话数据）"""
+
+    __slots__ = ("user_id", "group_id", "is_group", "message", "message_id",
+                 "is_admin", "is_superuser")
+
+    def __init__(self, user_id):
+        self.user_id = user_id
+        self.group_id = None
+        self.is_group = False
+        self.message = ""
+        self.message_id = 0
+        self.is_admin = True
+        self.is_superuser = True
+
+
+def _resolve_super_qq():
+    """解析网页操作绑定的超管 QQ（users 表 role=super 的第一个），60s 缓存"""
+    now = time.time()
+    if _web_super_cache["qq"] is not None and now - _web_super_cache["ts"] < 60:
+        return _web_super_cache["qq"]
+    qq = None
+    try:
+        db = ctx._framework.db
+        row = db.query_one(
+            "SELECT user_id FROM users WHERE role='super' ORDER BY id ASC LIMIT 1")
+        if row:
+            qq = str(row["user_id"])
+    except Exception:
+        pass
+    _web_super_cache.update({"qq": qq, "ts": now})
+    return qq
+
+
+def _verify_web_token(token):
+    """校验 token（逻辑与框架 apis.py 一致），返回 admin 字典或 None"""
+    try:
+        db = ctx._framework.db
+        row = db.query_one(
+            "SELECT id, username, role, is_active, token_created_at "
+            "FROM admin_users WHERE token = %s", (token,))
+        if not row or not row.get("is_active"):
+            return None
+        web_cfg = ctx._framework.config.get("web", {})
+        timeout = web_cfg.get("token_timeout") or web_cfg.get("session_timeout", 86400)
+        created = row.get("token_created_at")
+        if created:
+            if isinstance(created, str):
+                try:
+                    created = datetime.strptime(created, "%Y-%m-%d %H:%M:%S")
+                except ValueError:
+                    return None
+            expiry = created + timedelta(seconds=timeout)
+            if datetime.now() > expiry:
+                return None
+        return {"id": row["id"], "username": row["username"], "role": row["role"]}
+    except Exception:
+        return None
+
+
+def _web_require_auth(fn):
+    """WebUI API 鉴权装饰器（Bearer / Cookie 双通道，与框架一致）"""
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        try:
+            token = ""
+            auth = request.headers.get("Authorization", "")
+            if auth.startswith("Bearer "):
+                token = auth[7:]
+            else:
+                token = request.cookies.get("zcbot_token") or ""
+            if not token or len(token) != 2048:
+                return jsonify({"code": 401, "msg": "未提供有效认证令牌"}), 401
+            admin = _verify_web_token(token)
+            if not admin:
+                return jsonify({"code": 401, "msg": "令牌无效或已过期"}), 401
+            request.admin = admin
+        except Exception:
+            return jsonify({"code": 401, "msg": "认证失败"}), 401
+        return fn(*args, **kwargs)
+    return wrapper
+
+
+def _run_coro_in_loop(coro):
+    """把协程调度到框架主事件循环执行（Web 线程 → 主循环），返回结果"""
+    loop = getattr(ctx._framework, "loop", None)
+    if loop is None or loop.is_closed():
+        return asyncio.run(coro)
+    fut = asyncio.run_coroutine_threadsafe(coro, loop)
+    return fut.result(timeout=120)
+
+
+def _is_running(user_id, code):
+    """会话是否正在运行 AI 任务"""
+    task = _active_tasks.get((str(user_id), str(code)))
+    return bool(task and not task.done())
+
+
+# ---- 查询接口 ----
+
+@_web_require_auth
+def _web_info():
+    qq = _resolve_super_qq()
+    return jsonify({"code": 0, "data": {
+        "super_qq": qq,
+        "llm_configured": bool(str(_get_config(ctx, "base_url", "")).strip()),
+        "model": _get_config(ctx, "model", ""),
+    }})
+
+
+@_web_require_auth
+def _web_sessions():
+    qq = _resolve_super_qq()
+    if not qq:
+        return jsonify({"code": 403, "msg": "未配置超管 QQ（users 表 role=super）"}), 403
+    try:
+        rows = _run_coro_in_loop(_list_sessions_async(qq))
+    except Exception:
+        rows = []
+    current = None
+    try:
+        current = _run_coro_in_loop(_get_current_code(ctx, qq))
+    except Exception:
+        pass
+    for r in rows:
+        code = str(r.get("code") or "")
+        r["is_current"] = (code == current)
+        r["waiting"] = (qq, code) in _pending_ask
+        r["running"] = _is_running(qq, code)
+    return jsonify({"code": 0, "data": {"current": current, "sessions": rows}})
+
+
+async def _list_sessions_async(user_id):
+    try:
+        rows = await ctx.db_query_async(
+            "SELECT code, title, status, created_at, last_active_at "
+            "FROM llm_dev_conversations WHERE user_id = %s "
+            "ORDER BY last_active_at DESC, id DESC", (str(user_id),))
+        return rows or []
+    except Exception:
+        return []
+
+
+@_web_require_auth
+def _web_messages(code):
+    qq = _resolve_super_qq()
+    if not qq:
+        return jsonify({"code": 403, "msg": "未配置超管 QQ"}), 403
+    try:
+        msgs = _run_coro_in_loop(_get_session(ctx, qq, code))
+    except Exception:
+        msgs = []
+    conv = None
+    try:
+        conv = _run_coro_in_loop(_get_conversation(ctx, qq, code))
+    except Exception:
+        pass
+    if conv is None:
+        return jsonify({"code": 404, "msg": f"会话 #{code} 不存在"}), 404
+    pending = _pending_ask.get((qq, code))
+    return jsonify({"code": 0, "data": {
+        "code": code,
+        "conv": conv,
+        "messages": msgs,
+        "pending": {
+            "question": str(pending.get("question") or ""),
+            "options": pending.get("options") or [],
+        } if pending else None,
+        "running": _is_running(qq, code),
+    }})
+
+
+@_web_require_auth
+def _web_progress(code):
+    qq = _resolve_super_qq()
+    if not qq:
+        return jsonify({"code": 403, "msg": "未配置超管 QQ"}), 403
+    try:
+        items = _run_coro_in_loop(_get_progress_async(qq, code))
+    except Exception:
+        items = []
+    return jsonify({"code": 0, "data": {"items": items}})
+
+
+async def _get_progress_async(user_id, code):
+    """读取 WebUI 进度并清理（仅保留最近 20 条，防止表无限增长）"""
+    try:
+        rows = await ctx.db_query_async(
+            "SELECT id, text, created_at FROM llm_webui_progress "
+            "WHERE user_id = %s AND code = %s ORDER BY id ASC",
+            (str(user_id), str(code)))
+        if rows:
+            last_id = int(rows[-1]["id"])
+            await ctx.db_execute_async(
+                "DELETE FROM llm_webui_progress WHERE user_id = %s AND code = %s AND id < %s",
+                (str(user_id), str(code), max(0, last_id - 20)))
+        return rows or []
+    except Exception:
+        return []
+
+
+# ---- 操作接口 ----
+
+@_web_require_auth
+def _web_session_create():
+    qq = _resolve_super_qq()
+    if not qq:
+        return jsonify({"code": 403, "msg": "未配置超管 QQ"}), 403
+    data = request.get_json(silent=True) or {}
+    title = str(data.get("title") or "").strip() or None
+    try:
+        code = _run_coro_in_loop(_create_conversation(ctx, qq, title))
+    except Exception as e:
+        return jsonify({"code": 500, "msg": f"创建失败: {e}"}), 500
+    return jsonify({"code": 0, "msg": f"已创建会话 #{code}", "data": {"code": code}})
+
+
+@_web_require_auth
+def _web_set_current():
+    qq = _resolve_super_qq()
+    if not qq:
+        return jsonify({"code": 403, "msg": "未配置超管 QQ"}), 403
+    data = request.get_json(silent=True) or {}
+    code = str(data.get("code") or "").strip()
+    if not code:
+        return jsonify({"code": 400, "msg": "缺少会话编号"}), 400
+    try:
+        _run_coro_in_loop(_set_current(ctx, qq, code))
+    except Exception as e:
+        return jsonify({"code": 500, "msg": f"切换失败: {e}"}), 500
+    return jsonify({"code": 0, "msg": f"已切换到会话 #{code}"})
+
+
+@_web_require_auth
+def _web_send(code):
+    qq = _resolve_super_qq()
+    if not qq:
+        return jsonify({"code": 403, "msg": "未配置超管 QQ"}), 403
+    data = request.get_json(silent=True) or {}
+    text = str(data.get("text") or "").strip()
+    if not text:
+        return jsonify({"code": 400, "msg": "指令内容不能为空"}), 400
+    try:
+        _run_coro_in_loop(_start_ai(ctx, _WebEvent(qq), code, text))
+    except Exception as e:
+        return jsonify({"code": 500, "msg": f"发送失败: {e}"}), 500
+    return jsonify({"code": 0, "msg": "已提交，AI 正在处理"})
+
+
+@_web_require_auth
+def _web_option(code):
+    qq = _resolve_super_qq()
+    if not qq:
+        return jsonify({"code": 403, "msg": "未配置超管 QQ"}), 403
+    data = request.get_json(silent=True) or {}
+    try:
+        num = int(data.get("num") or 0)
+    except (TypeError, ValueError):
+        num = 0
+    if not (1 <= num <= 4):
+        return jsonify({"code": 400, "msg": "选项序号需为 1~4"}), 400
+    try:
+        _run_coro_in_loop(_reply_option(ctx, _WebEvent(qq), code, num))
+    except Exception as e:
+        return jsonify({"code": 500, "msg": f"回复失败: {e}"}), 500
+    return jsonify({"code": 0, "msg": "已选择，AI 继续处理"})
+
+
+@_web_require_auth
+def _web_say(code):
+    qq = _resolve_super_qq()
+    if not qq:
+        return jsonify({"code": 403, "msg": "未配置超管 QQ"}), 403
+    data = request.get_json(silent=True) or {}
+    text = str(data.get("text") or "").strip()
+    if not text:
+        return jsonify({"code": 400, "msg": "补充内容不能为空"}), 400
+    try:
+        _run_coro_in_loop(_reply_say(ctx, _WebEvent(qq), code, text))
+    except Exception as e:
+        return jsonify({"code": 500, "msg": f"补充失败: {e}"}), 500
+    return jsonify({"code": 0, "msg": "已补充，AI 继续处理"})
+
+
+@_web_require_auth
+def _web_continue():
+    qq = _resolve_super_qq()
+    if not qq:
+        return jsonify({"code": 403, "msg": "未配置超管 QQ"}), 403
+    data = request.get_json(silent=True) or {}
+    text = str(data.get("text") or "").strip()
+    if not text:
+        return jsonify({"code": 400, "msg": "修改需求不能为空"}), 400
+    try:
+        _run_coro_in_loop(_cmd_continue(ctx, _WebEvent(qq), text))
+    except Exception as e:
+        return jsonify({"code": 500, "msg": f"提交失败: {e}"}), 500
+    return jsonify({"code": 0, "msg": "已提交修改需求"})
+
+
+@_web_require_auth
+def _web_stop(code):
+    qq = _resolve_super_qq()
+    if not qq:
+        return jsonify({"code": 403, "msg": "未配置超管 QQ"}), 403
+    try:
+        _run_coro_in_loop(_cmd_stop(ctx, _WebEvent(qq), code))
+    except Exception as e:
+        return jsonify({"code": 500, "msg": f"停止失败: {e}"}), 500
+    return jsonify({"code": 0, "msg": "已请求停止"})
+
+
+@_web_require_auth
+def _web_delete(code):
+    qq = _resolve_super_qq()
+    if not qq:
+        return jsonify({"code": 403, "msg": "未配置超管 QQ"}), 403
+    try:
+        _run_coro_in_loop(_cmd_del(ctx, _WebEvent(qq), code))
+    except Exception as e:
+        return jsonify({"code": 500, "msg": f"删除失败: {e}"}), 500
+    return jsonify({"code": 0, "msg": f"会话 #{code} 已删除"})
+
+
+def _register_webui_routes(ctx_local):
+    """向框架 Flask 应用动态注册 WebUI API 路由（reload 时幂等）"""
+    try:
+        app = ctx_local._framework.web_server.app
+        if app is None:
+            ctx_local.log("WebUI 路由注册失败: web_server.app 为空", level="warning")
+            return
+        routes = [
+            ("/api/llm_webui/info", ["GET"], _web_info),
+            ("/api/llm_webui/sessions", ["GET"], _web_sessions),
+            ("/api/llm_webui/sessions", ["POST"], _web_session_create),
+            ("/api/llm_webui/current", ["PUT"], _web_set_current),
+            ("/api/llm_webui/sessions/<code>/messages", ["GET"], _web_messages),
+            ("/api/llm_webui/sessions/<code>/progress", ["GET"], _web_progress),
+            ("/api/llm_webui/sessions/<code>/send", ["POST"], _web_send),
+            ("/api/llm_webui/sessions/<code>/option", ["POST"], _web_option),
+            ("/api/llm_webui/sessions/<code>/say", ["POST"], _web_say),
+            ("/api/llm_webui/continue", ["POST"], _web_continue),
+            ("/api/llm_webui/sessions/<code>/stop", ["POST"], _web_stop),
+            ("/api/llm_webui/sessions/<code>/delete", ["POST"], _web_delete),
+        ]
+        existing = {str(r.rule) for r in app.url_map.iter_rules()}
+        added = 0
+        for rule, methods, fn in routes:
+            if rule not in existing:
+                app.add_url_rule(rule, endpoint=f"llm_webui_{fn.__name__}",
+                                 view_func=fn, methods=methods)
+                added += 1
+        ctx_local.log(f"WebUI API 路由注册完成（新增 {added} 条）")
+    except Exception as e:
+        ctx_local.log(f"WebUI 路由注册失败: {e}", level="error")

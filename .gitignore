@@ -14,3 +14,6 @@ Thumbs.db
 
 # Rust 编译产物
 target/
+
+# 备份文件
+*.bak.*
