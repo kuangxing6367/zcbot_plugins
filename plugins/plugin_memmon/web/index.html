@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>内存监控</title>
+<style>
+  :root {
+    --bg: #f6f7fb;
+    --card: #ffffff;
+    --border: #e5e7eb;
+    --text: #1f2329;
+    --muted: #8a919f;
+    --primary: #3b82f6;
+    --danger: #ef4444;
+    --warn: #f59e0b;
+    --ok: #22c55e;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 16px;
+    font-size: 14px;
+  }
+  .container { max-width: 1000px; margin: 0 auto; }
+
+  /* 顶部概览卡片 */
+  .overview { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .ov-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 16px;
+  }
+  .ov-label { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+  .ov-value { font-size: 22px; font-weight: 600; }
+  .ov-sub { color: var(--muted); font-size: 12px; margin-top: 4px; }
+
+  /* 工具条 */
+  .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .toolbar h2 { font-size: 16px; }
+  .btn {
+    background: var(--primary); color: #fff; border: none;
+    border-radius: 6px; padding: 6px 14px; cursor: pointer; font-size: 13px;
+  }
+  .btn:hover { opacity: 0.9; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .muted { color: var(--muted); font-size: 12px; }
+
+  /* 表格 */
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    background: #fafbfc; text-align: left; padding: 10px 14px;
+    color: var(--muted); font-size: 12px; font-weight: 500;
+    border-bottom: 1px solid var(--border); white-space: nowrap;
+  }
+  tbody td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: #f8fafc; }
+
+  .plugin-name { font-weight: 600; }
+  .plugin-desc { color: var(--muted); font-size: 12px; margin-top: 2px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tag {
+    display: inline-block; padding: 1px 8px; border-radius: 10px;
+    font-size: 11px; background: #eef2ff; color: #4f46e5; margin-left: 6px;
+  }
+  .bar-wrap { background: #eef1f5; border-radius: 5px; height: 10px; width: 100%; min-width: 120px; overflow: hidden; }
+  .bar { height: 100%; border-radius: 5px; transition: width .5s; }
+  .bar-hot { background: linear-gradient(90deg, var(--danger), #f97316); }
+  .bar-mid { background: linear-gradient(90deg, var(--warn), #fbbf24); }
+  .bar-low { background: linear-gradient(90deg, var(--ok), #34d399); }
+  .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  .empty { padding: 40px; text-align: center; color: var(--muted); }
+  .err { padding: 20px; text-align: center; color: var(--danger); }
+  .loading { padding: 40px; text-align: center; color: var(--muted); }
+  .footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 16px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="toolbar">
+    <h2>🧩 插件内存监控</h2>
+    <div>
+      <span class="muted" id="updated"></span>
+      <button class="btn" id="refreshBtn" onclick="loadData()">⟳ 刷新</button>
+    </div>
+  </div>
+
+  <div class="overview" id="overview"></div>
+
+  <div class="card">
+    <div id="tableArea">
+      <div class="loading">加载中…</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    内存为对象图递归估算值（sys.getsizeof + id 去重），仅供参考；
+    对象引用共享可能导致偏差，非精确测量。
+  </div>
+</div>
+
+<script>
+/* ── 工具函数 ── */
+function escapeHtml(s) {
+  if (s === null || s === undefined) return '';
+  return String(s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+
+function fmtMB(mb) {
+  if (mb >= 1024) return (mb / 1024).toFixed(2) + ' GB';
+  return mb.toFixed(2) + ' MB';
+}
+
+/* ── 数据获取 ── */
+const TOKEN_KEY = 'zcbot_token';
+
+async function api(url) {
+  const token = localStorage.getItem(TOKEN_KEY) || '';
+  const headers = {};
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  const res = await fetch(url, { headers });
+  if (res.status === 401) {
+    // token 失效，跳回登录页
+    localStorage.removeItem(TOKEN_KEY);
+    location.href = '/login.html';
+    return null;
+  }
+  return res.json();
+}
+
+/* ── 渲染 ── */
+function render(data) {
+  const plugins = (data && data.plugins) || [];
+  const total = (data && data.total_mem_mb) || 0;
+  const proc = (data && data.process_mem_mb) || 0;
+  const updated = (data && data.updated) || '';
+
+  document.getElementById('updated').textContent = updated ? ('更新于 ' + updated) : '';
+
+  // 概览
+  document.getElementById('overview').innerHTML = [
+    { label: '框架进程 RSS', value: fmtMB(proc), sub: 'psutil 实测' },
+    { label: '插件估算合计', value: fmtMB(total), sub: plugins.length + ' 个插件' },
+    { label: '最大占用插件', value: plugins.length ? escapeHtml(plugins[0].name) : '-', sub: plugins.length ? fmtMB(plugins[0].mem_mb) : '' },
+  ].map(c => `
+    <div class="ov-card">
+      <div class="ov-label">${c.label}</div>
+      <div class="ov-value">${c.value}</div>
+      <div class="ov-sub">${c.sub}</div>
+    </div>`).join('');
+
+  // 表格
+  const area = document.getElementById('tableArea');
+  if (!plugins.length) {
+    area.innerHTML = '<div class="empty">暂无已加载插件数据</div>';
+    return;
+  }
+
+  const maxMem = plugins[0].mem_bytes || 1;
+  const rows = plugins.map(p => {
+    const ratio = p.mem_bytes / maxMem;
+    const pct = Math.round(ratio * 100);
+    const barClass = pct >= 60 ? 'bar-hot' : (pct >= 30 ? 'bar-mid' : 'bar-low');
+    return `<tr>
+      <td>
+        <div class="plugin-name">${escapeHtml(p.name)}<span class="tag">v${escapeHtml(p.version)}</span></div>
+        <div class="plugin-desc" title="${escapeHtml(p.desc)}">${escapeHtml(p.desc) || '—'}</div>
+      </td>
+      <td class="num"><strong>${fmtMB(p.mem_mb)}</strong></td>
+      <td style="width:28%">
+        <div class="bar-wrap"><div class="bar ${barClass}" style="width:${Math.max(pct, 2)}%"></div></div>
+      </td>
+      <td class="num">${pct}%</td>
+      <td class="num">${p.obj_count.toLocaleString()}</td>
+      <td class="num">${p.func_count}</td>
+    </tr>`;
+  }).join('');
+
+  area.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>插件</th>
+          <th>估算内存</th>
+          <th>占比</th>
+          <th>%</th>
+          <th>对象数</th>
+          <th>函数数</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+async function loadData() {
+  const btn = document.getElementById('refreshBtn');
+  if (btn) btn.disabled = true;
+  try {
+    // 从仪表盘卡片接口取得本插件卡片中的 detail 数据
+    const res = await api('/api/dashboard/cards');
+    if (!res || res.code !== 0) throw new Error('接口返回异常');
+    const cards = res.data || [];
+    const mine = cards.find(c => c.plugin_name === 'plugin_memmon' && c.data && c.data.detail);
+    if (mine) {
+      render(mine.data.detail);
+    } else {
+      document.getElementById('tableArea').innerHTML =
+        '<div class="empty">未找到内存监控卡片数据，请检查插件是否已加载</div>';
+    }
+  } catch (e) {
+    document.getElementById('tableArea').innerHTML =
+      '<div class="err">加载失败: ' + escapeHtml(e.message) + '</div>';
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+/* 首次加载 + 每 30 秒自动刷新 */
+loadData();
+setInterval(loadData, 30000);
+</script>
+</body>
+</html>

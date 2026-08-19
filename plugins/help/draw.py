@@ -1,7 +1,7 @@
 """
 帮助菜单图片渲染器（Canvas 版，无 PIL）。
 
-帮助菜单图片绘制器，
+从 astrbot_plugin_help.draw.AstrBotHelpDrawer 迁移而来，
 绘图层改用 image_renderer 的原生 Canvas（Rust），
 彻底移除 PIL 绘制依赖。布局常量与计算逻辑保持原版一致。
 
@@ -23,13 +23,13 @@ def _img_mod():
     return sys.modules.get("plugin_image_renderer")
 
 
-class ZcbotHelpDrawer:
+class AstrBotHelpDrawer:
     # ---------------- 常量区 ----------------
     FONT_PATH_REGULAR = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "DouyinSansBold.otf"
     )
     LOGO_PATH = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "zcbot_logo.jpg"
+        os.path.dirname(os.path.abspath(__file__)), "astrbot_logo.jpg"
     )
 
     # 主题色

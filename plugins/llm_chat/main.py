@@ -17,8 +17,8 @@ LLM 对话插件 v1.8.0
  11. 好感度系统            — 每次对话 +1，AI 可读取/调整，/好感度 查看
  12. 长期记忆系统          — AI 可读/写/删记忆，重要记忆最多 5 条注入上下文
  13. 详细日志              — 全链路日志（请求/响应/usage/耗时/堆栈/缓存命中）
-  14. 人格预设系统          — 人格预设系统：多人格可切换（/人格 指令）
-  15. 对话统计 / 会话状态    — /对话统计、/会话、/函数列表 指令（对话统计）
+  14. 人格预设系统          — 借鉴 AstrBot Prompt 管理：多人格可切换（/人格 指令）
+  15. 对话统计 / 会话状态    — /对话统计、/会话、/函数列表 指令（借鉴 AstrBot Dashboard）
   16. 开关体系              — 群聊/私聊/指令/艾特/人格 独立开关（WebUI 配置）
   17. 函数调用日志          — 每次 AI 工具调用记录 参数/结果/耗时/成败（WebUI 可视）
   18. 自研 WebUI            — 函数列表/调用日志/统计/人格/配置 一体化控制台（嵌入框架后台）
@@ -458,7 +458,7 @@ def register(ctx_arg):
         require_superuser=True,
         description="超管命令：管理通用 API 池。用法: /api池 list | add <名称> <URL> [GET|POST] | note <名称> <注释> | remove <名称> | enable <名称> | disable <名称>",
     )
-    # 人格管理 / 统计 / 会话状态 / 函数列表
+    # 借鉴 AstrBot：人格管理 / 统计 / 会话状态 / 函数列表
     ctx.command(
         "/人格", handle_persona,
         priority=50,
@@ -540,13 +540,13 @@ def _set_config_value(key, value):
         _log_warn(f"写入配置 {key} 失败: {e}")
 
 
-def _default_prompt() -> str:
+def _default_prompt(event=None) -> str:
     base = str(_get_config("system_prompt", "")).strip() or (
         "你是 ZCBOT OneBot QQ 机器人框架上的一位乐于助人的 AI 助手，"
         "回答简洁、准确、友好，使用与用户相同的语言。"
     )
-    # 人格预设注入（多人格切换）
-    persona = _persona_prompt()
+    # 人格预设注入（借鉴 AstrBot Prompt 管理：多人格切换；event 传入时支持单群人设）
+    persona = _persona_prompt(event)
     if persona:
         base = persona + "\n\n" + base
     parts = get_llm_prompt_parts()
@@ -720,7 +720,7 @@ def _ensure_tables():
          "created_at INTEGER DEFAULT 0, "
          "updated_at INTEGER DEFAULT 0)",
          ("idx_llm_memory_user", "user_id, important")),
-         # 人格预设（多人格可切换）
+         # 人格预设（借鉴 AstrBot Prompt 管理理念：多人格可切换）
          ("llm_personas",
          "CREATE TABLE IF NOT EXISTS llm_personas ("
          "id INTEGER PRIMARY KEY AUTOINCREMENT, "
@@ -728,6 +728,14 @@ def _ensure_tables():
          "prompt TEXT, "
          "enabled INTEGER DEFAULT 1, "
          "created_at INTEGER DEFAULT 0)",
+         None),
+         # 单群/单用户人格绑定（统一走 DB 管理：会话键 -> 人格名）
+         # 会话键：群 = "g:<group_id>"，私聊 = "u:<user_id>"；绑定优先于全局 current_persona
+         ("llm_persona_bindings",
+         "CREATE TABLE IF NOT EXISTS llm_persona_bindings ("
+         "session_key VARCHAR(64) PRIMARY KEY, "
+         "persona_name VARCHAR(64) NOT NULL, "
+         "updated_at INTEGER DEFAULT 0)",
          None),
          # 通用 API 池（AI 可自主增删节点，并用 call_api 自由调用任意 HTTP 接口）
          ("llm_api_pool",
@@ -1610,13 +1618,33 @@ async def _fn_change_affinity(args, ctx=None, event=None, user_id=None):
             + (f"，原因: {reason}" if reason else ""))
 
 
-# ================= 人格预设系统（人格预设系统） =================
+# ================= 人格预设系统（借鉴 AstrBot Prompt 管理） =================
 
-def _persona_prompt() -> str:
-    """读取当前启用人格的 prompt，未启用/未设置返回空串"""
+def _session_persona_key(event) -> str:
+    """会话绑定键：群 = g:<group_id>，私聊 = u:<user_id>（单群人设的存储维度）"""
+    if getattr(event, "is_group", False) and getattr(event, "group_id", None):
+        return f"g:{event.group_id}"
+    return f"u:{getattr(event, 'user_id', 0)}"
+
+
+def _persona_prompt(event=None) -> str:
+    """读取当前启用人格的 prompt（单群人设优先：会话绑定 > 全局 current_persona）"""
     if not _cfg_bool("enable_persona", True):
         return ""
-    cur = str(_get_config("current_persona", "") or "").strip()
+    cur = ""
+    if event is not None:
+        # 1. 会话绑定（群聊=全群统一人格；私聊=个人人格）
+        try:
+            key = _session_persona_key(event)
+            row = ctx.db_query_one(
+                "SELECT persona_name FROM llm_persona_bindings WHERE session_key=%s", (key,))
+            if row and row.get("persona_name"):
+                cur = str(row["persona_name"]).strip()
+        except Exception as e:
+            _log_warn(f"会话人格绑定读取失败: {e}")
+    # 2. 回退全局人格
+    if not cur:
+        cur = str(_get_config("current_persona", "") or "").strip()
     if not cur:
         return ""
     try:
@@ -1650,7 +1678,20 @@ async def handle_persona(event, match):
                                    "示例: /人格 add 猫娘 你是一只傲娇的猫娘，喜欢用喵结尾说话")
                 return
             cur = str(_get_config("current_persona", "") or "")
-            lines = ["🎭 人格列表（" + ("当前: " + cur if cur else "当前: 默认人格") + "）:"]
+            # 当前会话生效人格（绑定优先于全局）
+            eff = cur
+            eff_src = "全局"
+            try:
+                key = _session_persona_key(event)
+                b = ctx.db_query_one(
+                    "SELECT persona_name FROM llm_persona_bindings WHERE session_key=%s", (key,))
+                if b and b.get("persona_name"):
+                    eff = str(b["persona_name"])
+                    eff_src = "本群绑定" if getattr(event, "is_group", False) else "个人绑定"
+            except Exception:
+                pass
+            head = f"当前生效: {eff}（{eff_src}）" if eff else "当前生效: 默认人格"
+            lines = [f"🎭 人格列表（{head}）:"]
             for r in rows:
                 mark = " ✅" if r["name"] == cur else ""
                 p = str(r.get("prompt") or "")[:60].replace("\n", " ")
@@ -1661,21 +1702,67 @@ async def handle_persona(event, match):
 
         if op in ("use", "启用", "切换"):
             if not rest:
-                await _send(event, "用法: /人格 use <名称>")
+                await _send(event, "用法: /人格 use <名称> [g:<群号>|u:<QQ>|global]\n"
+                                   "（群聊中直接 use = 绑定本群单群人设；私聊 = 绑定本人；超管可显式指定）")
                 return
+            # 解析作用域：use <名> [g:<群号>|u:<QQ>|global]
+            target_key = None
+            target_desc = None
+            parts2 = rest.split(maxsplit=1)
+            name = parts2[0].strip()
+            scope = parts2[1].strip() if len(parts2) > 1 else ""
+            if scope.lower() == "global":
+                target_key = "__global__"
+                target_desc = "全局"
+            elif scope.startswith("g:"):
+                target_key = f"g:{scope[2:].strip()}"
+                target_desc = f"群 {scope[2:].strip()}"
+            elif scope.startswith("u:"):
+                target_key = f"u:{scope[2:].strip()}"
+                target_desc = f"用户 {scope[2:].strip()}"
+            elif scope:
+                await _send(event, "❌ 作用域格式：global / g:<群号> / u:<QQ>")
+                return
+            else:
+                # 未指定：群聊绑定本群（单群人设），私聊绑定本人
+                if getattr(event, "is_group", False) and getattr(event, "group_id", None):
+                    target_key = f"g:{event.group_id}"
+                    target_desc = f"本群（单群人设）"
+                else:
+                    target_key = f"u:{getattr(event, 'user_id', 0)}"
+                    target_desc = "本人（私聊人格）"
             row = ctx.db_query_one(
-                "SELECT name FROM llm_personas WHERE name=%s AND enabled=1", (rest,))
+                "SELECT name FROM llm_personas WHERE name=%s AND enabled=1", (name,))
             if not row:
-                await _send(event, f"❌ 人格「{rest}」不存在或已停用")
+                await _send(event, f"❌ 人格「{name}」不存在或已停用")
                 return
-            _set_config_value("current_persona", rest)
-            await _send(event, f"🎭 已切换到人格「{rest}」，下次对话生效。")
+            if target_key == "__global__":
+                _set_config_value("current_persona", name)
+                await _send(event, f"🎭 已切换全局人格「{name}」，所有未绑定的会话生效。")
+            else:
+                ctx.db_execute(
+                    "INSERT INTO llm_persona_bindings (session_key, persona_name, updated_at) "
+                    "VALUES (%s, %s, %s) "
+                    "ON DUPLICATE KEY UPDATE persona_name=VALUES(persona_name), "
+                    "updated_at=VALUES(updated_at)",
+                    (target_key, name, int(time.time())))
+                await _send(event, f"🎭 {target_desc}已绑定人格「{name}」，下次对话生效。")
             _schedule_snapshot()
             return
 
         if op in ("off", "关闭", "默认"):
-            _set_config_value("current_persona", "")
-            await _send(event, "🎭 已切回默认人格。")
+            # 群聊/私聊 off = 解绑当前会话；显式 global = 清全局
+            scope = rest.strip().lower() if rest else ""
+            if scope == "global":
+                _set_config_value("current_persona", "")
+                await _send(event, "🎭 已切回全局默认人格。")
+            else:
+                key = _session_persona_key(event)
+                ctx.db_execute("DELETE FROM llm_persona_bindings WHERE session_key=%s", (key,))
+                if getattr(event, "is_group", False) and getattr(event, "group_id", None):
+                    await _send(event, f"🎭 本群已解除人格绑定，恢复全局/默认人格。")
+                else:
+                    await _send(event, f"🎭 已解除个人人格绑定，恢复全局/默认人格。")
             _schedule_snapshot()
             return
 
@@ -1882,7 +1969,7 @@ async def handle_memory(event, match):
     await _send(event, "\n".join(lines))
 
 
-# ================= 统计 / 会话状态 / 函数列表（统计 / 会话状态 / 函数列表） =================
+# ================= 统计 / 会话状态 / 函数列表（借鉴 AstrBot Dashboard 理念） =================
 
 def _dashboard_card_data():
     """仪表盘卡片数据（WebUI 首页展示）"""
@@ -2590,7 +2677,8 @@ async def _do_chat(event, user_id: str, text: str):
 
     history = _get_history(user_id)
     # 每次对话刷新系统上下文（含最新群上下文/身份注入/好感度/重要记忆），保证动态信息不过期
-    sys_prompt = _default_prompt()
+    # 传入 event 以支持单群人设（会话绑定人格优先于全局）
+    sys_prompt = _default_prompt(event)
     gctx = await _build_group_context(event, user_id)
     if gctx:
         sys_prompt += gctx

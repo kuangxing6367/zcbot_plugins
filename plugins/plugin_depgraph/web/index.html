@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>插件依赖图</title>
+<style>
+  body { font-family: -apple-system, "Microsoft YaHei", sans-serif; background:#0f1420; color:#dfe6f0; margin:0; padding:20px; }
+  h2 { margin-top:0; color:#fff; }
+  .stats { display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap; }
+  .stat { background:#1a2133; border-radius:10px; padding:12px 18px; }
+  .stat b { font-size:20px; color:#4a90d9; }
+  .warn { background:#2a2030; border-left:4px solid #e0a800; padding:10px 14px; border-radius:6px; margin-bottom:14px; }
+  .warn.err { border-left-color:#c0392b; }
+  .table-wrap { overflow:auto; background:#1a2133; border-radius:10px; padding:6px; }
+  table { border-collapse:collapse; width:100%; font-size:13px; }
+  th { text-align:left; padding:10px 12px; color:#8fa3bd; border-bottom:1px solid #263146; white-space:nowrap; }
+  td { padding:9px 12px; border-bottom:1px solid #222c44; vertical-align:top; }
+  tr:hover td { background:#1e2940; }
+  .lvl { display:inline-block; background:#263a5c; border-radius:4px; padding:1px 7px; font-size:11px; color:#8fc7ff; }
+  .dep { color:#7fd8a8; }
+  .opt { color:#e0b64a; font-style:italic; }
+  .py { color:#c9a6ff; font-size:11px; }
+  .missing { color:#ff7b72; }
+  .btn { background:#2f6fd0; color:#fff; border:none; border-radius:8px; padding:8px 16px; cursor:pointer; font-size:13px; }
+  .btn:hover { background:#3f7fe0; }
+  .imgwrap { margin-top:16px; background:#1a2133; border-radius:10px; padding:10px; text-align:center; }
+  img { max-width:100%; }
+  .meta { font-size:12px; color:#8fa3bd; }
+</style>
+</head>
+<body>
+  <h2>🔗 插件依赖图</h2>
+  <div class="stats">
+    <div class="stat">插件 <b id="cCount">-</b></div>
+    <div class="stat">缺失依赖 <b id="cMiss">-</b></div>
+    <div class="stat">可选未装 <b id="cOpt">-</b></div>
+    <div class="stat">循环依赖 <b id="cCyc">-</b></div>
+  </div>
+  <div id="warnings"></div>
+  <button class="btn" onclick="loadImage()">🖼 生成依赖图</button>
+  <button class="btn" style="background:#3a4666" onclick="loadData()">⟳ 刷新</button>
+  <div class="imgwrap" id="imgwrap" style="display:none"><img id="depimg" alt="依赖图"></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>插件</th><th>层级</th><th>硬依赖</th><th>可选依赖</th><th>Python 包</th></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+<script>
+async function loadData() {
+  const res = await fetch('/api/plugin_depgraph/data');
+  const j = await res.json();
+  if (j.code !== 0) { document.getElementById('tbody').innerHTML = '<tr><td>' + (j.msg||'加载失败') + '</td></tr>'; return; }
+  const d = j.data;
+  document.getElementById('cCount').textContent = d.count;
+  document.getElementById('cMiss').textContent = d.missing.length;
+  document.getElementById('cOpt').textContent = d.opt_missing.length;
+  document.getElementById('cCyc').textContent = d.cycles.length;
+  let w = '';
+  d.missing.forEach(m => { w += '<div class="warn err">⚠️ <b>'+m.plugin+'</b> 引用不存在的插件「<b>'+m.dep+'</b>」（硬依赖）</div>'; });
+  d.opt_missing.forEach(m => { w += '<div class="warn">🔸 <b>'+m.plugin+'</b> 可选依赖「<b>'+m.dep+'</b>」未装（自动跳过）</div>'; });
+  d.cycles.forEach(c => { w += '<div class="warn">🔄 循环依赖: ' + c.join(' → ') + '</div>'; });
+  if (d.missing.length || d.opt_missing.length || d.cycles.length) w = w || '';
+  document.getElementById('warnings').innerHTML = w;
+  document.getElementById('tbody').innerHTML = d.plugins.map(p => {
+    const deps = p.deps.length ? p.deps.map(x => '<span class="dep">'+x+'</span>').join(' ') : '<span class="meta">无</span>';
+    const opts = p.opt_deps.length ? p.opt_deps.map(x => '<span class="opt">'+x+'</span>').join(' ') : '<span class="meta">-</span>';
+    const pys = p.python.length ? p.python.map(x => '<span class="py">'+x+'</span>').join(' ') : '<span class="meta">-</span>';
+    return '<tr><td><b>'+p.name+'</b></td><td><span class="lvl">Lv.'+p.level+'</span></td><td>'+deps+'</td><td>'+opts+'</td><td>'+pys+'</td></tr>';
+  }).join('');
+}
+async function loadImage() {
+  const img = document.getElementById('depimg');
+  img.src = '/api/plugin_depgraph/image?t=' + Date.now();
+  document.getElementById('imgwrap').style.display = 'block';
+}
+loadData();
+</script>
+</body>
+</html>
