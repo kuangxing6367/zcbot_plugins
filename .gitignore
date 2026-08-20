@@ -21,3 +21,6 @@ target/
 # custom_ui 运行时下载的模板目录（从 GitHub webui/ 拉取解压），不入库
 plugins/custom_ui/templates/
 plugins/custom_ui/active.txt
+
+# 插件 zip 打包产物（由 Actions 构建并发布到 gh-pages）
+out/

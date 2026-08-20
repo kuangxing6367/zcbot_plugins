@@ -1,0 +1,51 @@
+name: build-plugin-zips
+
+# 自动打包每个插件为独立 zip，发布到 gh-pages 分支的 packages/
+# 触发：push 到 main 的 plugins/ 或 registry.json；或手动 workflow_dispatch
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'plugins/**'
+      - 'registry.json'
+      - 'scripts/build_plugin_zips.py'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build plugin zips
+        run: |
+          python scripts/build_plugin_zips.py
+          ls -la out/packages/ | head -n 30
+
+      - name: Deploy to gh-pages
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan gh-pages
+          git rm -rf --quiet . || true
+          mkdir -p packages
+          cp -r out/packages/. packages/
+          cp out/packages.json packages.json 2>/dev/null || true
+          cp registry.json registry.json
+          git add -A
+          if git diff --cached --quiet; then
+            echo "无变更，跳过提交"
+          else
+            git commit -m "build: 重新打包插件 zips（$(date +%Y%m%d-%H%M)）"
+            git push origin gh-pages --force
+          fi
