@@ -282,11 +282,20 @@ def _register_routes(ctx_local):
             ("/api/custom_ui/templates/<tpl_name>/activate", ["POST"], _api_activate),
             ("/api/custom_ui/reset", ["POST"], _api_reset),
         ]
-        for rule, methods, fn in rules:
-            if rule not in existing:
-                app.add_url_rule(rule, endpoint=f"custom_ui_{fn.__name__}",
-                                 view_func=fn, methods=methods)
-                added += 1
+        # 用底层 url_map.add() 注册路由，绕开 Flask 首次请求后 add_url_rule 的限制，
+        # 保证插件热重载/重复加载时也能成功注册。
+        from werkzeug.routing import Rule
+        existing = {str(r.rule) for r in app.url_map.iter_rules()}
+        for rule_path, methods, fn in rules:
+            endpoint = f"custom_ui_{fn.__name__}"
+            if rule_path in existing:
+                # 已注册过：仅刷新 view 函数（重载后函数对象变化）
+                app.view_functions[endpoint] = fn
+                continue
+            rule = Rule(rule_path, endpoint=endpoint, methods=methods)
+            app.url_map.add(rule)
+            app.view_functions[endpoint] = fn
+            added += 1
         _log(ctx_local, f"路由注册完成（新增 {added} 条）")
     except Exception as e:
         _log(ctx_local, f"路由注册失败: {e}", 'error')
