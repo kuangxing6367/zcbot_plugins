@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZCBOT · 管理面板</title>
+<style>
+  :root{
+    --bg:#07080d;--bg2:#0b0d14;--surface:#10131d;--card:#0e1120;--card2:#0b0e1c;
+    --border:#1c2133;--border2:#2a3048;--text:#e8ebf4;--muted:#8b93ad;--dim:#565e7a;
+    --accent:#6366f1;--accent-l:#818cf8;--accent-soft:rgba(99,102,241,.14);
+    --green:#22c55e;--red:#ef4444;--amber:#f59e0b;--cyan:#38bdf8;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    background:var(--bg);color:var(--muted);min-height:100vh;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+  .app{display:flex;min-height:100vh}
+  /* sidebar */
+  .side{width:220px;flex-shrink:0;background:var(--bg2);border-right:1px solid var(--border);
+    padding:1.2rem 1rem;position:sticky;top:0;height:100vh;overflow-y:auto}
+  .brand{display:flex;align-items:center;gap:.6rem;margin-bottom:1.6rem}
+  .brand .logo{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,#818cf8,#4f46e5);
+    display:flex;align-items:center;justify-content:center;font-size:1rem}
+  .brand b{color:var(--text);font-size:1.05rem;letter-spacing:-.01em}
+  .brand span{font-size:.62rem;color:var(--dim);font-family:ui-monospace,Menlo,Consolas,monospace}
+  .nav-item{display:flex;align-items:center;gap:.7rem;padding:.6rem .8rem;border-radius:9px;cursor:pointer;
+    font-size:.9rem;font-weight:500;color:var(--muted);transition:all .18s;margin-bottom:.2rem}
+  .nav-item:hover{background:var(--surface);color:var(--text)}
+  .nav-item.on{background:var(--accent-soft);color:var(--accent-l);border:1px solid rgba(99,102,241,.3)}
+  .nav-item .ic{width:17px;text-align:center;flex-shrink:0}
+  /* main */
+  .main{flex:1;min-width:0;padding:1.6rem 2rem}
+  .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.6rem}
+  .topbar h2{color:var(--text);font-size:1.35rem;font-weight:800;letter-spacing:-.02em}
+  .topbar .user{display:flex;align-items:center;gap:.7rem;font-size:.85rem;color:var(--muted)}
+  .topbar .avatar{width:30px;height:30px;border-radius:50%;background:var(--accent-soft);border:1px solid var(--accent-border,var(--border2));
+    display:flex;align-items:center;justify-content:center;color:var(--accent-l);font-weight:700;font-size:.85rem}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;margin-bottom:1.6rem}
+  .stat-card{background:linear-gradient(180deg,var(--card),var(--card2));border:1px solid var(--border);
+    border-radius:14px;padding:1.2rem 1.3rem;transition:all .22s}
+  .stat-card:hover{border-color:var(--border2);transform:translateY(-2px)}
+  .stat-card .lbl{font-size:.72rem;color:var(--dim);letter-spacing:.06em;margin-bottom:.5rem}
+  .stat-card .val{font-size:1.7rem;font-weight:800;color:var(--text);letter-spacing:-.02em;
+    background:linear-gradient(92deg,#818cf8,#38bdf8);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:1.4rem;margin-bottom:1.4rem}
+  .panel h3{color:var(--text);font-size:1.02rem;font-weight:700;margin-bottom:1rem}
+  .panel h3 small{color:var(--dim);font-weight:500;font-size:.78rem;margin-left:.5rem}
+  .grid2{display:grid;grid-template-columns:1fr;gap:1.4rem}
+  @media(min-width:900px){.grid2{grid-template-columns:1.2fr 1fr}}
+  /* generic */
+  .btn{display:inline-flex;align-items:center;gap:.45rem;cursor:pointer;font-family:inherit;font-weight:600;
+    font-size:.85rem;border-radius:9px;padding:.55rem 1rem;transition:all .18s;border:none}
+  .btn-primary{background:linear-gradient(135deg,#6d6bf3,#4f46e5);color:#fff}
+  .btn-primary:hover{box-shadow:0 8px 20px rgba(99,102,241,.4)}
+  .btn-line{background:transparent;color:var(--muted);border:1px solid var(--border2)}
+  .btn-line:hover{border-color:var(--accent);color:var(--text)}
+  .btn-danger{background:transparent;color:var(--red);border:1px solid rgba(239,68,68,.4)}
+  .btn-danger:hover{background:rgba(239,68,68,.1)}
+  .row{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap}
+  .row.mt{margin-top:1rem}
+  table{width:100%;border-collapse:collapse;font-size:.85rem}
+  th{text-align:left;font-size:.72rem;color:var(--dim);letter-spacing:.06em;font-weight:600;
+    padding:.6rem .8rem;border-bottom:1px solid var(--border)}
+  td{padding:.7rem .8rem;border-bottom:1px solid var(--border);color:var(--muted);vertical-align:top}
+  td b{color:var(--text);font-weight:600}
+  tr:hover td{background:rgba(255,255,255,.015)}
+  .tag{display:inline-block;font-size:.68rem;padding:.12rem .5rem;border-radius:6px;
+    background:var(--accent-soft);color:var(--accent-l);border:1px solid rgba(99,102,241,.3)}
+  .tag.green{background:rgba(34,197,94,.12);color:var(--green);border-color:rgba(34,197,94,.3)}
+  .tag.gray{background:var(--surface);color:var(--dim);border-color:var(--border)}
+  .mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.82rem}
+  .empty{color:var(--dim);font-size:.85rem;padding:1rem;text-align:center}
+  .msg{font-size:.84rem;line-height:1.7;margin-top:.7rem}
+  .msg.ok{color:var(--green)}.msg.err{color:var(--red)}
+  textarea{width:100%;background:#080a10;border:1px solid var(--border2);border-radius:9px;color:#c9cedd;
+    font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.78rem;line-height:1.7;padding:.8rem;
+    min-height:220px;resize:vertical;outline:none}
+  textarea:focus{border-color:var(--accent)}
+  .field label{display:block;font-size:.75rem;color:var(--dim);margin-bottom:.35rem;letter-spacing:.02em}
+  .summary{display:flex;justify-content:space-between;align-items:center;font-size:.82rem;color:var(--dim);
+    margin-top:.5rem}
+  /* login overlay */
+  .login-wrap{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(ellipse 70% 50% at 50% 0%,#10132a 0%,var(--bg) 60%);padding:24px}
+  .login-card{width:100%;max-width:360px;background:var(--card);border:1px solid var(--border2);
+    border-radius:18px;padding:2rem 1.8rem;box-shadow:0 30px 80px -24px rgba(0,0,0,.8)}
+  .login-card h1{font-size:1.3rem;color:var(--text);font-weight:800;margin-bottom:.4rem;letter-spacing:-.02em}
+  .login-card p{font-size:.86rem;color:var(--dim);margin-bottom:1.4rem;line-height:1.7}
+  .login-card input{width:100%;background:var(--surface);border:1px solid var(--border2);border-radius:9px;
+    padding:.7rem .85rem;color:var(--text);font-size:.92rem;outline:none;margin-bottom:.9rem;transition:border .2s}
+  .login-card input:focus{border-color:var(--accent)}
+  .spinner{width:13px;height:13px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;
+    border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .btn:disabled{opacity:.55;cursor:not-allowed}
+</style>
+</head>
+<body>
+
+<!-- 登录 -->
+<div class="login-wrap" id="loginWrap">
+  <div class="login-card">
+    <h1>ZCBOT 管理面板</h1>
+    <p>个性化前端已接管框架。请登录管理员账号。</p>
+    <input id="lu" placeholder="用户名" autocomplete="username">
+    <input id="lp" type="password" placeholder="密码" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+    <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="doLogin()">登录</button>
+    <div class="msg" id="loginMsg"></div>
+    <div class="row mt"><a href="/reset" style="font-size:.78rem;color:var(--dim)">页面有问题？点此恢复</a></div>
+  </div>
+</div>
+
+<!-- 主界面 -->
+<div class="app" id="app" style="display:none">
+  <aside class="side">
+    <div class="brand"><span class="logo">🎨</span><div><b>ZCBOT</b><br><span>个性化前端</span></div></div>
+    <div class="nav-item on" data-page="dash"><span class="ic">📊</span>仪表盘</div>
+    <div class="nav-item" data-page="plugins"><span class="ic">🧩</span>插件</div>
+    <div class="nav-item" data-page="config"><span class="ic">⚙️</span>配置管理</div>
+    <div class="nav-item" data-page="groups"><span class="ic">👥</span>群组</div>
+    <div class="nav-item" data-page="logs"><span class="ic">📜</span>日志</div>
+    <div class="nav-item" data-page="reset"><span class="ic">🛟</span>前端恢复</div>
+    <div class="row" style="margin-top:1.6rem;padding-top:1rem;border-top:1px solid var(--border)">
+      <button class="btn btn-line" onclick="logout()">退出登录</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <h2 id="pageTitle">仪表盘</h2>
+      <div class="user"><span class="avatar" id="avatar">A</span><span id="userName">管理员</span></div>
+    </div>
+
+    <!-- 仪表盘 -->
+    <div id="page-dash">
+      <div class="cards">
+        <div class="stat-card"><div class="lbl">运行状态</div><div class="val" id="stStatus">…</div></div>
+        <div class="stat-card"><div class="lbl">已加载插件</div><div class="val" id="stPlugins">…</div></div>
+        <div class="stat-card"><div class="lbl">框架版本</div><div class="val" id="stVersion" style="font-size:1.3rem">…</div></div>
+        <div class="stat-card"><div class="lbl">数据库</div><div class="val" id="stDb" style="font-size:1.1rem">…</div></div>
+      </div>
+      <div class="grid2">
+        <div class="panel"><h3>系统资源</h3>
+          <table><tbody>
+            <tr><td><b>CPU</b></td><td class="mono" id="sysCpu">…</td></tr>
+            <tr><td><b>内存</b></td><td class="mono" id="sysMem">…</td></tr>
+            <tr><td><b>运行时长</b></td><td class="mono" id="sysUptime">…</td></tr>
+          </tbody></table>
+        </div>
+        <div class="panel"><h3>前端接管状态</h3>
+          <p style="font-size:.85rem;line-height:1.8;color:var(--muted)">
+            当前由 <b style="color:var(--accent-l)">custom_ui</b> 插件接管整个 Web 前端。
+            根路由与静态资源均从插件 <span class="mono">web/</span> 目录服务。
+          </p>
+          <div class="row mt"><button class="btn btn-danger" onclick="confirmReset()">遇到前端问题？恢复默认</button></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 插件 -->
+    <div id="page-plugins" style="display:none"><div class="panel"><h3>已加载插件 <small id="plugCount"></small></h3>
+      <table><thead><tr><th>插件</th><th>版本</th><th>描述</th></tr></thead><tbody id="plugBody"></tbody></table>
+    </div></div>
+
+    <!-- 配置管理 -->
+    <div id="page-config" style="display:none">
+      <div class="panel"><h3>config.yaml 配置 <small>读取自框架 config.yaml</small></h3>
+        <div class="row"><button class="btn btn-primary" id="saveCfgBtn" onclick="saveConfig()">保存（写入 config.yaml）</button>
+          <button class="btn btn-line" onclick="loadConfig()">重新读取</button>
+          <span class="tag gray mono" id="cfgSection">整文件</span></div>
+        <textarea id="cfgArea" spellcheck="false"></textarea>
+        <div class="msg" id="cfgMsg"></div>
+        <div class="summary"><span>提示：框架只允许按配置段合并更新（如 web / database / plugin）。</span><span id="cfgSize"></span></div>
+      </div>
+    </div>
+
+    <!-- 群组 -->
+    <div id="page-groups" style="display:none"><div class="panel"><h3>群组列表 <small id="grpCount"></small></h3>
+      <table><thead><tr><th>群号</th><th>名称</th><th>成员</th></tr></thead><tbody id="grpBody"></tbody></table>
+    </div></div>
+
+    <!-- 日志 -->
+    <div id="page-logs" style="display:none"><div class="panel"><h3>运行日志 <small>最近 50 条</small></h3>
+      <div><pre id="logArea" class="mono" style="background:#080a10;border:1px solid var(--border2);border-radius:9px;padding:.8rem;font-size:.74rem;line-height:1.9;max-height:480px;overflow-y:auto;white-space:pre-wrap"></pre></div>
+    </div></div>
+
+    <!-- 前端恢复 -->
+    <div id="page-reset" style="display:none"><div class="panel"><h3>前端恢复</h3>
+      <p style="font-size:.88rem;line-height:1.8;color:var(--muted)">当前接管前端的是 <b style="color:var(--accent-l)">custom_ui</b> 插件。
+        若页面异常，可通过禁用该插件回到框架默认前端。刷新过快（5 秒内 2 次）时系统会自动引导到本恢复流程。</p>
+      <div class="row mt">
+        <button class="btn btn-danger" onclick="doResetRemote()">禁用插件，恢复框架默认前端</button>
+        <a href="/reset" class="btn btn-line" style="text-decoration:none">打开恢复页 /reset</a>
+      </div>
+      <div class="msg" id="resetMsg2"></div>
+    </div></div>
+  </main>
+</div>
+
+<script>
+const TOKEN_KEY='zcbot_token'
+let token=localStorage.getItem(TOKEN_KEY)||''
+const api=async(path,opts={})=>{
+  const r=await fetch(path,{...opts,headers:{'Content-Type':'application/json',...(opts.headers||{}),...(token?{'Authorization':'Bearer '+token}:{})}})
+  let d; try{d=await r.json()}catch(e){d={code:-1}}
+  return {status:r.status,...d}
+}
+
+/* ---------- 刷新过快检测：5 秒内 2 次刷新 → 引导恢复 ---------- */
+function detectRapidReload(){
+  const KEY='zcbot_last_load', LIMIT=5000, MSG='zcbot_reset_dismissed'
+  if(sessionStorage.getItem(MSG)==='1'){ sessionStorage.removeItem(MSG); return } // 恢复后放行一次
+  const now=Date.now()
+  try{
+    const prev=+sessionStorage.getItem(KEY)||0
+    if(now-prev<LIMIT){ location.href='/reset' }
+    else { sessionStorage.setItem(KEY,String(now)) }
+  }catch(e){}
+}
+detectRapidReload()
+
+/* ---------- 登录 ---------- */
+async function doLogin(){
+  const u=document.getElementById('lu').value.trim(), p=document.getElementById('lp').value
+  const msg=document.getElementById('loginMsg')
+  const btn=event?event.target:document.querySelector('#loginWrap .btn'); btn.disabled=true
+  msg.textContent='登录中...'; msg.className='msg'
+  const d=await api('/api/login',{method:'POST',body:JSON.stringify({username:u,password:p})})
+  btn.disabled=false
+  if(d.code===0){ token=d.data.token; localStorage.setItem(TOKEN_KEY,token); enterApp(d.data.username,d.data.role) }
+  else { msg.textContent=d.msg||'登录失败'; msg.className='msg err' }
+}
+
+function enterApp(username,role){
+  document.getElementById('loginWrap').style.display='none'
+  document.getElementById('app').style.display='flex'
+  document.getElementById('userName').textContent=username||'管理员'
+  document.getElementById('avatar').textContent=(username||'A').charAt(0).toUpperCase()
+  loadDash()
+}
+function logout(){ localStorage.removeItem(TOKEN_KEY); location.reload() }
+
+/* ---------- 导航 ---------- */
+const titles={dash:'仪表盘',plugins:'插件',config:'配置管理',groups:'群组',logs:'日志',reset:'前端恢复'}
+document.querySelectorAll('.nav-item').forEach(el=>{
+  el.addEventListener('click',()=>{
+    document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('on')); el.classList.add('on')
+    switchPage(el.dataset.page)
+  })
+})
+function switchPage(p){
+  Object.keys(titles).forEach(k=>{const el=document.getElementById('page-'+k); el.style.display=(k===p)?'block':'none'})
+  document.getElementById('pageTitle').textContent=titles[p]
+  if(p==='plugins')loadPlugins(); if(p==='config')loadConfig(); if(p==='groups')loadGroups(); if(p==='logs')loadLogs()
+}
+
+/* ---------- 仪表盘 ---------- */
+async function loadDash(){
+  const msgEl=d=>d&&(d.msg||'')
+  try{
+    const [db,rt]=await Promise.all([api('/api/dashboard'),api('/api/runtime/stats')])
+    const d=db.data||{}, r=rt.data||{}
+    // 状态
+    const bots=(d.bots||[]); const hasBot=Array.isArray(bots)
+    document.getElementById('stStatus').textContent=(hasBot&&bots.length>0)?('● 在线 ('+bots.length+')'):'● 运行中'
+    // 插件
+    document.getElementById('stPlugins').textContent=(d.plugins_active!==undefined?d.plugins_active+' / '+(d.plugins_total||'?'):'—')
+    // 版本
+    if(d.framework_version!==undefined)document.getElementById('stVersion').textContent=d.framework_version
+    // 数据库
+    document.getElementById('stDb').textContent=(r.db_type||d.db||'—')
+    // 系统资源
+    document.getElementById('sysCpu').textContent=(r.cpu_percent!==undefined?r.cpu_percent+'%':'—')
+    const mu=r.memory
+    document.getElementById('sysMem').textContent=mu?(Math.round(mu.used_mb)+' / '+Math.round(mu.total_mb)+' MB ('+mu.percent+'%)'):'—'
+    document.getElementById('sysUptime').textContent=r.uptime_seconds?fmtUptime(r.uptime_seconds):'—'
+  }catch(e){ /* 忽略加载失败 */ }
+}
+function fmtUptime(sec){
+  const d=Math.floor(sec/86400),h=Math.floor(sec%86400/3600),m=Math.floor(sec%3600/60),s=sec%60
+  return (d>0?d+'天 ':'')+(h>0?h+'小时 ':'')+(m>0?m+'分 ':'')+s+'秒'
+}
+api('/api/dashboard').then(db=>{ const d=db.data||{};
+  if(d.framework_version!==undefined)document.getElementById('stVersion').textContent=d.framework_version
+  if(d.framework_name)document.querySelector('.brand b').textContent=d.framework_name
+}).catch(()=>{})
+
+/* ---------- 插件 ---------- */
+async function loadPlugins(){
+  const d=await api('/api/plugins'); const list=d.data||[]
+  document.getElementById('plugCount').textContent='共 '+list.length+' 个'
+  document.getElementById('plugBody').innerHTML=list.map(p=>`<tr><td><b>${esc(p.plugin_name)}</b>${p.is_active?'':' <span class="tag gray">停用</span>'}</td>
+    <td class="mono">${esc(p.version||'')}</td><td>${esc(p.description||p.desc||'')}</td></tr>`).join('')||'<tr><td colspan=3><div class="empty">暂无插件</div></td></tr>'
+}
+
+/* ---------- config 管理（接管 config.yaml） ---------- */
+let cfgRaw=''
+async function loadConfig(){
+  const d=await api('/api/config/yaml'); const msg=document.getElementById('cfgMsg')
+  if(d.code===0){ cfgRaw=JSON.stringify(d.data,null,2); document.getElementById('cfgArea').value=cfgRaw
+    document.getElementById('cfgSize').textContent=cfgRaw.length+' B'; msg.textContent='已读取'; msg.className='msg ok' }
+  else{ msg.textContent=d.msg||'读取失败'; msg.className='msg err' }
+}
+async function saveConfig(){
+  const msg=document.getElementById('cfgMsg'); const btn=document.getElementById('saveCfgBtn'); btn.disabled=true
+  msg.textContent='读取整文件...'; msg.className='msg'
+  // 整文件保存：拆成各配置段分组提交（框架支持段级更新）
+  let doc; try{ doc=JSON.parse(document.getElementById('cfgArea').value) }catch(e){ msg.textContent='JSON 格式错误：'+e.message; msg.className='msg err'; btn.disabled=false; return }
+  // 读取整份，按段分发
+  const sections=['web','database','plugin','onebot','security','logger','scheduler','proxy']
+  let okCount=0, total=0, firstErr=''
+  for(const [sec,val] of Object.entries(doc)){
+    if(!val||typeof val!=='object')continue
+    total++
+    const rd=await api('/api/config/yaml/'+encodeURIComponent(sec),{method:'PUT',body:JSON.stringify({data:val})})
+    if(rd.code===0)okCount++; else if(!firstErr)firstErr=rd.msg
+  }
+  msg.textContent=total?`已保存 ${okCount}/${total} 个配置段`+(firstErr?'；失败：'+firstErr:''):'没有可保存的配置段'
+  msg.className=total&&okCount===total?'msg ok':'msg err'
+  btn.disabled=false
+}
+
+/* ---------- 群组 ---------- */
+async function loadGroups(){
+  const d=await api('/api/groups'); const list=d.data||[]
+  document.getElementById('grpCount').textContent='共 '+list.length+' 个'
+  document.getElementById('grpBody').innerHTML=list.map(g=>`<tr><td class="mono">${esc(g.group_id)}</td><td>${esc(g.group_name||'')}</td><td>${esc(g.member_count!==undefined?g.member_count+'':'')}</td></tr>`).join('')||'<tr><td colspan=3><div class="empty">暂无群组</div></td></tr>'
+}
+
+/* ---------- 日志 ---------- */
+async function loadLogs(){
+  const d=await api('/api/runtime_logs?limit=60')
+  const lines=d.data||[]
+  document.getElementById('logArea').textContent=lines.map(l=>{
+    const t=((l.timestamp||'').toString()).replace('T',' ').slice(0,19)
+    return '['+(l.level||'')+'] '+(t?'['+t+'] ':'')+(l.category?('('+l.category+') '):'')+(l.message||'')
+  }).join('\n')||'（暂无日志）'
+}
+
+/* ---------- 恢复默认前端 ---------- */
+function confirmReset(){ if(confirm('确认要恢复框架默认前端吗？将禁用 custom_ui 插件。'))doResetRemote() }
+async function doResetRemote(){
+  const msg=document.getElementById('resetMsg2')||document.getElementById('cfgMsg'); 
+  if(msg)msg.textContent='正在禁用插件并恢复默认前端...'; 
+  const d=await api('/api/custom_ui/reset',{method:'POST'})
+  if(msg){ msg.textContent=d.msg||(d.status===401?'未登录或登录已失效':'恢复失败'); msg.className=d.code===0?'msg ok':'msg err' }
+  if(d.code===0){ setTimeout(()=>{localStorage.removeItem(TOKEN_KEY);location.href='/'},1200) }
+}
+
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+
+/* 启动：检查 token 是否仍有效 */
+(async function init(){
+  if(!token){ return } // 显示登录
+  const d=await api('/api/me')
+  if(d.status===401||d.code===401){ localStorage.removeItem(TOKEN_KEY); token=''; return }
+  const ad=d.data||{}
+  enterApp(ad.username||'管理员',ad.role||'')
+})()
+</script>
+</body>
+</html>

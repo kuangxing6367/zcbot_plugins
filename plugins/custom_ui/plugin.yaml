@@ -1,0 +1,5 @@
+name: 个性化前端
+version: 1.0.0
+author: ZGRIC
+description: 接管整个 Web 管理面板，提供个性化前端（含刷新过快检测与 /reset 恢复页）
+priority: 250
