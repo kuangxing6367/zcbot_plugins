@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>custom_ui · 模板管理</title>
+<style>
+  :root{
+    --bg:#07080d;--surface:#10131d;--card:#0e1120;--card2:#0b0e1c;--border:#1c2133;--border2:#2a3048;
+    --text:#e8ebf4;--muted:#8b93ad;--dim:#565e7a;--accent:#6366f1;--accent-l:#818cf8;
+    --accent-soft:rgba(99,102,241,.14);--green:#22c55e;--amber:#f59e0b;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    background:radial-gradient(ellipse 70% 50% at 50% 0%,#10132a 0%,var(--bg) 60%);color:var(--muted);
+    min-height:100vh;padding:28px 20px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:760px;margin:0 auto}
+  .badge{display:inline-flex;align-items:center;gap:.5rem;font-family:ui-monospace,Menlo,Consolas,monospace;
+    font-size:.72rem;letter-spacing:.1em;color:var(--accent-l);background:var(--accent-soft);
+    border:1px solid rgba(99,102,241,.42);padding:.35rem .7rem;border-radius:8px;margin-bottom:1.2rem}
+  h1{font-size:1.5rem;font-weight:800;color:var(--text);letter-spacing:-.02em;margin-bottom:.4rem}
+  .sub{font-size:.9rem;color:var(--muted);line-height:1.8;margin-bottom:1.6rem}
+  .panel{background:var(--card);border:1px solid var(--border2);border-radius:14px;padding:1.4rem;margin-bottom:1.2rem}
+  .panel h2{font-size:1rem;font-weight:700;color:var(--text);margin-bottom:1rem}
+  .tpl{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.9rem .3rem;
+    border-bottom:1px solid var(--border)}
+  .tpl:last-child{border-bottom:none}
+  .tpl .nm{display:flex;align-items:center;gap:.6rem;min-width:0}
+  .tpl .nm .ic{width:32px;height:32px;border-radius:9px;background:var(--accent-soft);
+    border:1px solid rgba(99,102,241,.3);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .tpl .nm b{color:var(--text);font-weight:600;font-size:.92rem}
+  .tpl .nm .st{font-size:.74rem;color:var(--dim);margin-top:.1rem}
+  .tag{display:inline-block;font-size:.66rem;padding:.1rem .45rem;border-radius:6px;margin-left:.4rem;
+    background:var(--accent-soft);color:var(--accent-l);border:1px solid rgba(99,102,241,.3)}
+  .tag.active{background:rgba(34,197,94,.12);color:var(--green);border-color:rgba(34,197,94,.3)}
+  .btn{display:inline-flex;align-items:center;gap:.4rem;cursor:pointer;font-family:inherit;font-weight:600;
+    font-size:.8rem;border-radius:8px;padding:.45rem .85rem;transition:all .18s;border:none}
+  .btn-p{background:linear-gradient(135deg,#6d6bf3,#4f46e5);color:#fff}
+  .btn-p:hover{box-shadow:0 6px 16px rgba(99,102,241,.4)}
+  .btn-l{background:transparent;color:var(--muted);border:1px solid var(--border2)}
+  .btn-l:hover{border-color:var(--accent);color:var(--text)}
+  .btn-d{background:transparent;color:#ef4444;border:1px solid rgba(239,68,68,.4)}
+  .btn-d:hover{background:rgba(239,68,68,.1)}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .msg{margin-top:.9rem;font-size:.84rem;line-height:1.7}
+  .msg.ok{color:var(--green)}.msg.err{color:#ef4444}
+  .actions{display:flex;gap:.7rem;flex-wrap:wrap;margin-top:1rem}
+  .empty{color:var(--dim);font-size:.85rem;text-align:center;padding:1.2rem}
+  .spinner{width:13px;height:13px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;
+    border-radius:50%;animation:spin .7s linear infinite;display:inline-block;vertical-align:-2px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .link{color:var(--accent-l);font-size:.82rem;cursor:pointer;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <span class="badge">🎨 custom_ui · 模板管理</span>
+  <h1>网页模板管理</h1>
+  <p class="sub">从官方插件仓库 <span style="font-family:ui-monospace">kuangxing6367/zcbot_plugins/webui/</span> 拉取网页模板。
+    选择模板 → 下载 → 安装（切换激活）→ 刷新网页生效。</p>
+
+  <div class="panel">
+    <h2>可用的远程模板 <span class="tag" id="remoteCount">0</span></h2>
+    <div id="remoteList"><div class="empty">加载中…</div></div>
+  </div>
+
+  <div class="panel">
+    <h2>已下载模板 <span class="tag" id="localCount">0</span></h2>
+    <div id="localList"><div class="empty">加载中…</div></div>
+  </div>
+
+  <div class="panel">
+    <h2>恢复框架默认前端</h2>
+    <p style="font-size:.85rem;color:var(--muted);line-height:1.8">若页面异常，可禁用本插件回到框架默认 Web 面板。
+      刷新过快（5 秒内 2 次）时系统也会自动引导到恢复流程。</p>
+    <div class="actions">
+      <button class="btn btn-d" onclick="doReset()">禁用插件，恢复框架默认前端</button>
+      <a class="link" href="/reset">打开恢复页 /reset</a>
+    </div>
+  </div>
+
+  <div class="msg" id="msg"></div>
+</div>
+
+<script>
+const TOKEN_KEY='zcbot_token'
+let token=localStorage.getItem(TOKEN_KEY)||''
+const api=async(path,opts={})=>{
+  const r=await fetch(path,{...opts,headers:{'Content-Type':'application/json',...(opts.headers||{}),...(token?{'Authorization':'Bearer '+token}:{})}})
+  let d; try{d=await r.json()}catch(e){d={code:-1}}
+  return {status:r.status,...d}
+}
+
+async function load(){
+  const msg=document.getElementById('msg')
+  const d=await api('/api/custom_ui/templates')
+  if(d.status===401){ msg.textContent='未登录或登录已失效，请先登录'; msg.className='msg err'; return }
+  const data=d.data||{}
+  const remote=data.remote||[], local=data.local||[], active=data.active
+  document.getElementById('remoteCount').textContent=remote.length
+  document.getElementById('localCount').textContent=local.length
+  // 远程列表
+  document.getElementById('remoteList').innerHTML=remote.length?remote.map(t=>`
+    <div class="tpl">
+      <div class="nm"><span class="ic">📦</span><div><b>${esc(t.name)}</b>
+        <div class="st">${fmtSize(t.size)} · GitHub</div></div></div>
+      <button class="btn btn-p" onclick="download('${esc(t.name)}',this)">下载</button>
+    </div>`).join(''):'<div class="empty">仓库 webui/ 目录暂无模板</div>'
+  // 本地列表
+  document.getElementById('localList').innerHTML=local.length?local.map(n=>`
+    <div class="tpl">
+      <div class="nm"><span class="ic">🎨</span><div><b>${esc(n)}</b>
+        ${active===n?'<span class="tag active">当前使用中</span>':'<span class="tag">已下载</span>'}</div></div>
+      ${active===n?'<button class="btn btn-l" onclick="goHome()">查看效果 →</button>':
+        `<button class="btn btn-p" onclick="activate('${esc(n)}',this)">切换启用</button>`}
+    </div>`).join(''):'<div class="empty">还没有下载模板</div>'
+}
+function goHome(){ location.href='/' }
+async function download(name,btn){
+  setBtn(btn,true); showMsg('正在从 GitHub 下载模板 ['+name+']…','')
+  const d=await api('/api/custom_ui/templates/'+encodeURIComponent(name)+'/download',{method:'POST'})
+  setBtn(btn,false)
+  showMsg(d.msg||(d.status===401?'未登录':'下载失败'),d.code===0)
+  if(d.code===0){ setTimeout(load,500) }
+}
+async function activate(name,btn){
+  setBtn(btn,true); showMsg('正在切换模板 ['+name+']…','')
+  const d=await api('/api/custom_ui/templates/'+encodeURIComponent(name)+'/activate',{method:'POST'})
+  setBtn(btn,false)
+  showMsg(d.msg||(d.status===401?'未登录':'切换失败'),d.code===0)
+  if(d.code===0){ load(); setTimeout(()=>{ location.href='/' },900) }
+}
+async function doReset(){
+  if(!confirm('确认禁用 custom_ui 插件并恢复框架默认前端吗？'))return
+  showMsg('正在恢复默认前端…','')
+  const d=await api('/api/custom_ui/reset',{method:'POST'})
+  showMsg(d.msg||(d.status===401?'未登录':'恢复失败'),d.code===0)
+  if(d.code===0){ setTimeout(()=>{ localStorage.removeItem(TOKEN_KEY); location.href='/' },1000) }
+}
+function setBtn(btn,busy){ btn.disabled=busy; btn.innerHTML=busy?'<span class="spinner"></span> 处理中':'下载' }
+function showMsg(text,ok){ const el=document.getElementById('msg'); el.textContent=text; el.className='msg '+(ok?'ok':'err') }
+function fmtSize(n){ if(!n)return ''; if(n>1048576)return (n/1048576).toFixed(1)+' MB'; if(n>1024)return (n/1024).toFixed(1)+' KB'; return n+' B' }
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+load()
+</script>
+</body>
+</html>

@@ -152,9 +152,9 @@
     },
     {
       "name": "custom_ui",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "ZGRIC",
-      "description": "接管整个 Web 管理面板，提供个性化前端（含刷新过快检测与 /reset 恢复页）",
+      "description": "从 GitHub 拉取网页模板接管 Web 面板，提供模板选择/下载/安装/切换",
       "repo": "kuangxing6367/zcbot_plugins",
       "branch": "main",
       "sub_path": "plugins/custom_ui"
