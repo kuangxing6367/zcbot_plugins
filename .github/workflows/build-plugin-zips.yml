@@ -20,12 +20,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.1.1
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          allow-prereleases: true
 
       - name: Build plugin zips
         run: |
@@ -37,12 +38,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout --orphan gh-pages
-          git rm -rf --quiet . || true
+          git rm -rf --cached --quiet . || true
           mkdir -p packages
           cp -r out/packages/. packages/
           cp out/packages.json packages.json 2>/dev/null || true
           cp registry.json registry.json
-          git add -A
+          git add packages packages.json registry.json
           if git diff --cached --quiet; then
             echo "无变更，跳过提交"
           else
