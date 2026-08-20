@@ -42,7 +42,6 @@ jobs:
           mkdir -p packages
           cp -r out/packages/. packages/
           cp out/packages.json packages.json 2>/dev/null || true
-          cp registry.json registry.json
           git add packages packages.json registry.json
           if git diff --cached --quiet; then
             echo "无变更，跳过提交"
