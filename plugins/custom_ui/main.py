@@ -36,18 +36,46 @@ TEMPLATES_DIR_NAME = "webui"  # 仓库顶层 webui/ 目录，存放模板 zip
 
 # ---------------------------------------------------------------- 工具
 
+# 数据目录（plugins_dat/custom_ui），register 时从 ctx 获取并缓存。
+# 模板、激活标记、接管标记都存这里：插件更新/重装不会覆盖。
+_DATA_DIR = None
+
+
 def _plugin_dir():
     return os.path.dirname(os.path.abspath(__file__))
 
 
+def _dat_dir():
+    """插件数据目录（plugins_dat/custom_ui），模板与状态标记存放处"""
+    if _DATA_DIR:
+        return _DATA_DIR
+    # 未初始化时回退到代码目录（仅作 fallback）
+    return _plugin_dir()
+
+
+def _init_dat_dir(ctx_local):
+    global _DATA_DIR
+    try:
+        _DATA_DIR = ctx_local.get_data_dir()
+        os.makedirs(_DATA_DIR, exist_ok=True)
+    except Exception:
+        _DATA_DIR = _plugin_dir()
+    return _DATA_DIR
+
+
 def _templates_root():
-    """本地模板存放根：plugins/custom_ui/templates/<name>/<解压内容>"""
-    return os.path.join(_plugin_dir(), 'templates')
+    """本地模板存放根：plugins_dat/custom_ui/templates/<name>/<解压内容>"""
+    return os.path.join(_dat_dir(), 'templates')
 
 
 def _active_marker():
-    """当前激活模板标记文件"""
-    return os.path.join(_plugin_dir(), 'active.txt')
+    """当前激活模板标记文件（存数据目录，更新不丢）"""
+    return os.path.join(_dat_dir(), 'active.txt')
+
+
+def _override_marker():
+    """接管标记文件（存数据目录，更新不丢）"""
+    return os.path.join(_dat_dir(), 'override.txt')
 
 
 def _get_active_template():
@@ -65,6 +93,27 @@ def _set_active_template(name):
     os.makedirs(_templates_root(), exist_ok=True)
     with open(_active_marker(), 'w', encoding='utf-8') as f:
         f.write(name)
+
+
+def _is_override_enabled():
+    try:
+        with open(_override_marker(), 'r', encoding='utf-8') as f:
+            return f.read().strip() == '1'
+    except Exception:
+        return False
+
+
+def _set_override(enabled: bool):
+    try:
+        if enabled:
+            with open(_override_marker(), 'w', encoding='utf-8') as f:
+                f.write('1')
+        else:
+            if os.path.exists(_override_marker()):
+                os.remove(_override_marker())
+        return True
+    except Exception:
+        return False
 
 
 def _log(ctx_local, msg, level='info'):
@@ -273,6 +322,30 @@ def _register_routes(ctx_local):
                 pass
             return jsonify({'code': 0, 'msg': '已恢复框架默认前端'})
 
+        def _api_override():
+            """启用前端接管（需已有激活模板）"""
+            if not _auth():
+                return jsonify({'code': 401, 'msg': '未登录'}), 401
+            active = _get_active_template()
+            if not active:
+                return jsonify({'code': 400, 'msg': '请先下载并切换启用一个模板，再接管前端'}), 400
+            if not _set_override(True):
+                return jsonify({'code': 500, 'msg': '写入接管标记失败'}), 500
+            ok = ctx_local.override_webui()
+            _log(ctx_local, "已启用前端接管，根路由 redirect 到 /custom_ui/" if ok else "接管失败")
+            return jsonify({'code': 0 if ok else 500,
+                            'msg': '已启用前端接管，刷新网页生效' if ok else '接管失败'})
+
+        def _api_cancel_override():
+            """取消前端接管：回退框架默认 WebUI"""
+            if not _auth():
+                return jsonify({'code': 401, 'msg': '未登录'}), 401
+            _set_override(False)
+            loader = ctx_local._framework.plugin_loader
+            loader.clear_override_webui(ctx_local.plugin_name)
+            _log(ctx_local, "已取消前端接管，回退框架默认 WebUI")
+            return jsonify({'code': 0, 'msg': '已取消接管，回退框架默认 WebUI'})
+
         rules = [
             ("/custom_ui/", ["GET"], _serve_template),
             ("/custom_ui/<path:path>", ["GET"], _serve_template),
@@ -281,6 +354,8 @@ def _register_routes(ctx_local):
             ("/api/custom_ui/templates/<tpl_name>/download", ["POST"], _api_download),
             ("/api/custom_ui/templates/<tpl_name>/activate", ["POST"], _api_activate),
             ("/api/custom_ui/reset", ["POST"], _api_reset),
+            ("/api/custom_ui/override", ["POST"], _api_override),
+            ("/api/custom_ui/override", ["DELETE"], _api_cancel_override),
         ]
         # 用底层 url_map.add() 注册路由，绕开 Flask 首次请求后 add_url_rule 的限制，
         # 保证插件热重载/重复加载时也能成功注册。
@@ -302,11 +377,24 @@ def _register_routes(ctx_local):
 
 
 def register(ctx):
-    # 接管前端：框架根路由 / redirect 到 /custom_ui/
-    ok = ctx.override_webui()
-    _log(ctx, "已接管 Web 前端，根路由 / redirect 到 /custom_ui/" if ok else "接管前端失败")
+    """注册插件：不自动接管，仅在持久化标记启用且有激活模板时接管。"""
+    # 初始化数据目录（模板/标记存 plugins_dat，更新不丢）
+    _init_dat_dir(ctx)
 
-    # 附带注册一个内嵌 WebUI 入口（供框架插件管理页展示）
+    # 注册内嵌 WebUI 入口（框架 WebUI → 插件 WebUI 进入模板管理）
     ctx.webui("个性化前端", "index.html", icon="🎨", order=60)
 
+    # 注册 API 路由（含接管/取消接管）
     _register_routes(ctx)
+
+    # 若之前启用过接管且已有激活模板，恢复接管（重启保持）
+    if _is_override_enabled():
+        active = _get_active_template()
+        if active:
+            ok = ctx.override_webui()
+            _log(ctx, "已恢复前端接管（标记启用，模板: " + active + "）" if ok else "恢复接管失败")
+        else:
+            _log(ctx, "接管标记已启用但无激活模板，暂不接管", 'warning')
+            _set_override(False)
+    else:
+        _log(ctx, "未启用前端接管，框架默认 WebUI 照常")
