@@ -12,7 +12,12 @@
 - /reset 恢复页：询问是否遇到前端问题 → 确认后要求登录 → 恢复前端默认设置
   （通过禁用本插件回到框架默认前端）
 - 接管框架 config 管理：通过框架 /api/config/yaml 读写 config.yaml
+
+前端资源以 zip 形式保存在插件的 assets/ 目录（frontend.zip），
+register 时由本插件负责解压到 web/ 目录，框架接管后从 web/ 服务整个前端。
 """
+import os
+import zipfile
 
 __plugin_meta__ = {
     "name": "个性化前端",
@@ -21,6 +26,40 @@ __plugin_meta__ = {
     "desc": "接管整个 Web 管理面板，提供个性化前端（含刷新检测与 /reset 恢复页）",
     "priority": 250,
 }
+
+
+def _extract_frontend(ctx_local):
+    """
+    由插件负责：把 assets/frontend.zip 解压到本插件 web/ 目录。
+    框架接管后即从 web/ 服务整个前端。
+    返回解压后的 web/ 绝对路径，失败返回 None。
+    """
+    import shutil
+    plugin_dir = os.path.dirname(os.path.abspath(__file__))
+    zip_path = os.path.join(plugin_dir, 'assets', 'frontend.zip')
+    web_dir = os.path.join(plugin_dir, 'web')
+    if not os.path.isfile(zip_path):
+        ctx_local.log(f"[custom_ui] 前端 zip 不存在: {zip_path}", level='warning')
+        return None
+    try:
+        os.makedirs(web_dir, exist_ok=True)
+        # 清空旧 web/ 内容（避免残留旧版本文件）
+        for name in os.listdir(web_dir):
+            p = os.path.join(web_dir, name)
+            if os.path.isdir(p):
+                shutil.rmtree(p, ignore_errors=True)
+            else:
+                try:
+                    os.remove(p)
+                except Exception:
+                    pass
+        with zipfile.ZipFile(zip_path, 'r') as z:
+            z.extractall(web_dir)
+        ctx_local.log(f"[custom_ui] 前端已从 zip 解压到 {web_dir}")
+        return web_dir
+    except Exception as e:
+        ctx_local.log(f"[custom_ui] 解压前端失败: {e}", level='error')
+        return None
 
 
 def _register_webui_routes(ctx_local):
@@ -76,6 +115,9 @@ def _register_webui_routes(ctx_local):
 
 
 def register(ctx):
+    # 由插件负责：从 assets/frontend.zip 解压前端到 web/ 目录
+    _extract_frontend(ctx)
+
     # 注册为前端接管插件：根路由与静态资源全部指向本插件 web/ 目录
     ok = ctx.override_webui()
     if ok:

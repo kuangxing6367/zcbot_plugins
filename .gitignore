@@ -17,3 +17,6 @@ target/
 
 # 备份文件
 *.bak.*
+
+# custom_ui 前端由插件从 assets/frontend.zip 解压生成，web/ 为运行时产物不入库
+plugins/custom_ui/web/
