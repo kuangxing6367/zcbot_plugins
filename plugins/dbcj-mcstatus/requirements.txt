@@ -1,4 +1,0 @@
-# 本插件无第三方运行时依赖：
-# - 状态探测：走内网 PHP API（http://127.0.0.1:400/mc/dbcj），使用标准库 urllib
-# - 图片渲染：依赖 image_renderer 插件（Rust Canvas 渲染器）
-# 原依赖 mcstatus 已移除

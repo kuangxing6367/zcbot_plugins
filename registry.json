@@ -22,15 +22,6 @@
       "sub_path": "plugins/custom_ui"
     },
     {
-      "name": "dbcj-mcstatus",
-      "version": "1.2.1",
-      "author": "ZGRIC",
-      "description": "Minecraft 服务器状态探测：/mcstatus 查询在线人数、延迟、 motd，支持多服务器",
-      "repo": "kuangxing6367/zcbot_plugins",
-      "branch": "main",
-      "sub_path": "plugins/dbcj-mcstatus"
-    },
-    {
       "name": "echo",
       "version": "1.0.0",
       "author": "ZGRIC",
@@ -38,24 +29,6 @@
       "repo": "kuangxing6367/zcbot_plugins",
       "branch": "main",
       "sub_path": "plugins/echo"
-    },
-    {
-      "name": "file",
-      "version": "1.3.0",
-      "author": "Chris",
-      "description": "文件操作：发送、删除、移动、复制、查看文件夹内容、删除目录、上传（仅超管）",
-      "repo": "kuangxing6367/zcbot_plugins",
-      "branch": "main",
-      "sub_path": "plugins/file"
-    },
-    {
-      "name": "fun_score",
-      "version": "2.1.0",
-      "author": "zgric",
-      "description": "签到积分：每日签到/积分/排行榜/等级/违禁词检测/LLM 工具（Pillow 图片渲染版）",
-      "repo": "kuangxing6367/zcbot_plugins",
-      "branch": "main",
-      "sub_path": "plugins/fun_score"
     },
     {
       "name": "help",
@@ -69,15 +42,6 @@
         "Pillow>=10.0.0",
         "numpy>=1.24.0"
       ]
-    },
-    {
-      "name": "hitokoto",
-      "version": "1.0.0",
-      "author": "ZGRIC",
-      "description": "一言：/一言 随机返回一句经典语录，支持分类筛选（动画/文学/哲学等）",
-      "repo": "kuangxing6367/zcbot_plugins",
-      "branch": "main",
-      "sub_path": "plugins/hitokoto"
     },
     {
       "name": "image_renderer",
