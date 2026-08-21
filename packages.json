@@ -1,0 +1,84 @@
+{
+  "packages": {
+    "broadcast": {
+      "zip": "packages/broadcast.zip",
+      "size": 212870
+    },
+    "custom_ui": {
+      "zip": "packages/custom_ui.zip",
+      "size": 14997
+    },
+    "echo": {
+      "zip": "packages/echo.zip",
+      "size": 765
+    },
+    "help": {
+      "zip": "packages/help.zip",
+      "size": 1448722
+    },
+    "image_renderer": {
+      "zip": "packages/image_renderer.zip",
+      "size": 7108635
+    },
+    "keyword_api": {
+      "zip": "packages/keyword_api.zip",
+      "size": 6560
+    },
+    "llm_blacklist": {
+      "zip": "packages/llm_blacklist.zip",
+      "size": 2790
+    },
+    "llm_chat": {
+      "zip": "packages/llm_chat.zip",
+      "size": 38253
+    },
+    "llm_plugin_gen": {
+      "zip": "packages/llm_plugin_gen.zip",
+      "size": 32747
+    },
+    "message_guard": {
+      "zip": "packages/message_guard.zip",
+      "size": 3819
+    },
+    "minecraftconsole": {
+      "zip": "packages/minecraftconsole.zip",
+      "size": 12071
+    },
+    "plugin_depgraph": {
+      "zip": "packages/plugin_depgraph.zip",
+      "size": 8969
+    },
+    "plugin_memmon": {
+      "zip": "packages/plugin_memmon.zip",
+      "size": 9716
+    },
+    "qqadmin": {
+      "zip": "packages/qqadmin.zip",
+      "size": 17944
+    },
+    "restart_manager": {
+      "zip": "packages/restart_manager.zip",
+      "size": 2921
+    },
+    "runtime_status": {
+      "zip": "packages/runtime_status.zip",
+      "size": 4229
+    },
+    "send_like": {
+      "zip": "packages/send_like.zip",
+      "size": 4829
+    },
+    "session_waiter": {
+      "zip": "packages/session_waiter.zip",
+      "size": 2427
+    },
+    "ui_ext_demo": {
+      "zip": "packages/ui_ext_demo.zip",
+      "size": 1047
+    },
+    "video_parse": {
+      "zip": "packages/video_parse.zip",
+      "size": 6134
+    }
+  }
+}

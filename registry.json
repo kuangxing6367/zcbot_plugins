@@ -1,0 +1,197 @@
+{
+  "name": "ZCBOT 官方插件源",
+  "description": "ZCBOT 官方插件市场索引（由 zgric_onebot11_plugins 仓库维护）",
+  "homepage": "https://github.com/kuangxing6367/zcbot_plugins",
+  "plugins": [
+    {
+      "name": "broadcast",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "全局广播：定时向所有群/私聊发送消息，支持文本/图片/文件，可配置发送间隔",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/broadcast"
+    },
+    {
+      "name": "custom_ui",
+      "version": "1.1.1",
+      "author": "ZGRIC",
+      "description": "从 GitHub 拉取网页模板接管 Web 面板，提供模板选择/下载/安装/切换",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/custom_ui"
+    },
+    {
+      "name": "echo",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "原样返回用户文本消息，无参数时返回 PONG",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/echo"
+    },
+    {
+      "name": "help",
+      "version": "1.0.0",
+      "author": "tinker",
+      "description": "查询所有已注册命令，生成图片帮助菜单",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/help",
+      "dependencies": [
+        "Pillow>=10.0.0",
+        "numpy>=1.24.0"
+      ]
+    },
+    {
+      "name": "image_renderer",
+      "version": "1.1.0",
+      "author": "ZGRIC",
+      "description": "通用图片渲染引擎（原生 Rust 扩展自动加载，缺失自动回退 PIL），提供卡片/文本绘制工具",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/image_renderer",
+      "dependencies": [
+        "Pillow>=10.0.0"
+      ]
+    },
+    {
+      "name": "keyword_api",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "关键词 API 回复：配置关键词触发规则，调用外部 API 返回动态内容",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/keyword_api"
+    },
+    {
+      "name": "llm_blacklist",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "LLM 对话黑名单管理（超管 /插件拉黑 <QQ号> 拉黑，预防上下文滥用）",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/llm_blacklist"
+    },
+    {
+      "name": "llm_chat",
+      "version": "1.8.0",
+      "author": "ZGRIC",
+      "description": "QQ 内大模型对话：全异步、自动上下文记忆、AI 函数调用、人格预设、好感度、长期记忆 + 自研 WebUI 控制台（/chat 或直接 @机器人）",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/llm_chat",
+      "dependencies": [
+        "httpx"
+      ]
+    },
+    {
+      "name": "llm_plugin_gen",
+      "version": "1.7.0",
+      "author": "ZGRIC",
+      "description": "LLM 插件生成器：对话式开发插件，AI 辅助编写代码、调试、部署，支持 WebUI 控制台",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/llm_plugin_gen"
+    },
+    {
+      "name": "message_guard",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "消息防护：限流/防刷/敏感词过滤，保护机器人不被滥用，支持黑白名单",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/message_guard"
+    },
+    {
+      "name": "minecraftconsole",
+      "version": "1.6.1",
+      "author": "zgric",
+      "description": "Minecraft 控制台：远程控制 MC 服务器，执行命令、查看日志、玩家管理",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/minecraftconsole"
+    },
+    {
+      "name": "plugin_depgraph",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "扫描插件间依赖关系（DB 统一管理），/依赖 文本树、/依赖图 图片",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/plugin_depgraph"
+    },
+    {
+      "name": "plugin_memmon",
+      "version": "1.1.0",
+      "author": "ZGRIC",
+      "description": "插件内存统计 + 进程内存诊断（/mem 统计 /memdiag 诊断报告），WebUI 展示",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/plugin_memmon"
+    },
+    {
+      "name": "qqadmin",
+      "version": "1.1.0",
+      "author": "ZGRIC",
+      "description": "QQ 群管插件：禁言/踢人/全员禁言/精华/公告/宵禁/违禁词(本地+API)/进群管理/协管等",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/qqadmin"
+    },
+    {
+      "name": "restart_manager",
+      "version": "1.0.1",
+      "author": "zgric",
+      "description": "超级管理员 /重启 原地重启框架，完成后回执内存占用",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/restart_manager"
+    },
+    {
+      "name": "runtime_status",
+      "version": "1.1.0",
+      "author": "ZGRIC",
+      "description": "框架运行状态监控，提供 /status /info /help /uptime /plugins 命令，支持 Web UI 配置",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/runtime_status"
+    },
+    {
+      "name": "send_like",
+      "version": "3.0.0",
+      "author": "ZGRIC",
+      "description": "点赞插件：普通用户 0~8 随机赞，超管每天固定 10 赞，支持自动点赞",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/send_like"
+    },
+    {
+      "name": "session_waiter",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "多轮会话基础设施：插件可等待用户下一条消息（wait_for_user）",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/session_waiter"
+    },
+    {
+      "name": "ui_ext_demo",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "演示群组/用户管理页插件扩展（列 + 详情面板）",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/ui_ext_demo"
+    },
+    {
+      "name": "video_parse",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "自动解析群内视频分享链接，返回信息卡片（封面图+文字，不含直链）；已注册为 LLM AI 函数",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/video_parse"
+    }
+  ]
+}
