@@ -1,0 +1,5 @@
+name: 远程管理
+version: 1.0.0
+author: ZGRIC
+description: 超级管理员私聊下发指令远程管理群/广播/查状态
+priority: 50

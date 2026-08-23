@@ -24,3 +24,6 @@ plugins/custom_ui/active.txt
 
 # 插件 zip 打包产物（由 Actions 构建并发布到 gh-pages）
 out/
+
+# WebUI 模板构建产物（由 webui/ 源码构建生成），不入库
+webui_build/

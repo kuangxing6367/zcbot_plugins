@@ -49,6 +49,15 @@ DEFAULT_CONFIG = {
     "join_max_times": 3,            # 未命中尝试次数上限（0=不限）
     "join_blacklist": "",           # 进群黑名单 QQ（空格分隔）
     "assistants": "",               # 协管名单（空格分隔 QQ）
+    # ── 群事件监听（extra.py 子系统）──
+    "watch_enabled": False,         # 群事件监听总开关
+    "watch_admin_notify": True,     # 管理员变更通知
+    "watch_ban_notify": True,       # 禁言/解禁通知
+    "watch_recall_notify": True,    # 消息撤回通知
+    "watch_show_operator": True,    # 通知中显示操作者
+    # ── 群开关机（extra.py 子系统）──
+    "power_enabled": True,          # 本群是否开机（False=关机，普通成员消息被拦截）
+    "power_intercept": True,        # 关机时是否拦截消息（关闭则仅作标记不拦截）
 }
 
 # 配置项中文标签映射（用于群内配置查看/设置）
@@ -75,6 +84,13 @@ LABEL_MAP = {
     "join_review": "进群审核",
     "join_no_match_reject": "未命中驳回",
     "assistants": "协管名单",
+    "watch_enabled": "群事件监听",
+    "watch_admin_notify": "管理员变更通知",
+    "watch_ban_notify": "禁言通知",
+    "watch_recall_notify": "撤回通知",
+    "watch_show_operator": "显示操作者",
+    "power_enabled": "开机状态",
+    "power_intercept": "关机拦截",
 }
 
 # 中文→key 反查映射

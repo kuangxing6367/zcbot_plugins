@@ -1,0 +1,5 @@
+name: 关键词监控
+version: 1.0.0
+author: ZGRIC
+description: 群消息命中关键词时私聊转发给超级管理员
+priority: 50

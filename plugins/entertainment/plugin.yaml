@@ -1,0 +1,8 @@
+name: 娱乐百宝箱
+version: 1.0.0
+author: ZGRIC
+description: 笑话/绕口令/脑筋急转弯/星座运势/抽签等娱乐指令
+priority: 50
+dependencies:
+  python:
+    - "httpx"

@@ -1,0 +1,12 @@
+{
+  "reverse_poke": {
+    "description": "开启后，被戳时直接反戳回去（不再发送文字）",
+    "type": "boolean",
+    "default": false
+  },
+  "replies": {
+    "description": "自定义回应语料（逗号分隔）；留空使用内置随机俏皮话",
+    "type": "string",
+    "default": ""
+  }
+}

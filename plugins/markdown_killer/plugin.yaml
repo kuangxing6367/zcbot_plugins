@@ -1,0 +1,5 @@
+name: 去格式
+version: 1.0.0
+author: ZGRIC
+description: 去除消息中的 Markdown 语法，提供纯文本；支持群内自动模式
+priority: 50

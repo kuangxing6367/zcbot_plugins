@@ -1,0 +1,12 @@
+{
+  "payee_name": {
+    "description": "收款方名称（显示在二维码内容中）",
+    "type": "string",
+    "default": ""
+  },
+  "payee_account": {
+    "description": "收款方账号（备用，未填名称时使用）",
+    "type": "string",
+    "default": ""
+  }
+}

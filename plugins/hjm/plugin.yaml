@@ -1,0 +1,5 @@
+name: 名言金句
+version: 1.0.0
+author: ZGRIC
+description: 随机/按关键词返回名言金句（本地语料）
+priority: 50

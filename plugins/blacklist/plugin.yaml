@@ -1,0 +1,5 @@
+name: 全局用户黑名单
+version: 1.0.0
+author: ZGRIC
+description: 超级管理员维护全局用户黑名单，黑名单用户消息被静默丢弃
+priority: 5

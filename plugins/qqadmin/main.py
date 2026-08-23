@@ -21,15 +21,18 @@ import time
 
 import guard
 import store
+import extra
 
 # 将 guard 中的任务/兜底函数提升到 main 模块命名空间（scheduler/router 通过 getattr 查找）
 from guard import curfew_tick, vote_tick, on_message_fallback
+# 扩展子系统的定时任务同样提升到 main 命名空间，供调度器按名查找
+from extra import sign_tick
 
 __plugin_meta__ = {
     "name": "qqadmin",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "author": "ZGRIC",
-    "desc": "QQ群管插件：禁言/踢人/全禁/精华/公告/宵禁/违禁词(本地+API)/进群管理/协管等",
+    "desc": "QQ群管插件：禁言/踢人/全禁/精华/公告/宵禁/违禁词/进群管理/协管/群打卡/数据导出/事件监听/开关机",
     "priority": 90,
 }
 
@@ -903,7 +906,10 @@ def handle_help(event, match):
         "  投票禁言 <秒数> @用户",
         "  赞同禁言 / 反对禁言",
         "  /群管帮助",
+        "---",
     ]
+    # 追加扩展子系统命令（打卡/导出/事件监听/开关机）
+    lines.extend(extra.EXTRA_HELP_LINES)
     # 尝试图片渲染（image_renderer 官方版 _render_card_image），失败回退纯文本
     if not _try_send_card_image(event, "群管帮助", lines, 560):
         _reply(event, "\n".join(lines))
@@ -995,7 +1001,10 @@ def register(ctx_obj):
     # ── 帮助（所有人）──
     ctx.command(r"^/群管帮助\s*$", handle_help, priority=50, description="群管命令帮助")
 
-    ctx.logger.info("群管插件注册完成: 命令+事件+定时任务")
+    # ── 扩展子系统：群打卡 / 数据导出 / 事件监听 / 开关机 ──
+    extra.register_extra(ctx)
+
+    ctx.logger.info("群管插件注册完成: 命令+事件+定时任务+扩展子系统")
 
 
 # ===================== 开/关 便捷 handler =====================

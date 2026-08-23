@@ -1,0 +1,5 @@
+name: 群通知广播
+version: 1.0.0
+author: ZGRIC
+description: 超级管理员向全部或指定群发送通知/广播
+priority: 50

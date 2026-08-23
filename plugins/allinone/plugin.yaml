@@ -1,0 +1,5 @@
+name: 万能工具箱
+version: 1.0.0
+author: ZGRIC
+description: Base64/时间戳/随机数/哈希等本地小工具集合
+priority: 50

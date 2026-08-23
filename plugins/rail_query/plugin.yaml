@@ -1,0 +1,8 @@
+name: 列车查询
+version: 1.0.0
+author: ZGRIC
+description: 按车次查询列车经停站、到发时间与历时
+priority: 50
+dependencies:
+  python:
+    - "httpx"

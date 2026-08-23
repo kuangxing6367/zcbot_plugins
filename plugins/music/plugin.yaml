@@ -1,0 +1,8 @@
+name: 点歌
+version: 1.0.0
+author: ZGRIC
+description: 搜索歌曲并以音乐卡片返回可播放链接（Meting 公共接口）
+priority: 50
+dependencies:
+  python:
+    - "httpx"

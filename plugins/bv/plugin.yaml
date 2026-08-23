@@ -1,0 +1,8 @@
+name: B站视频解析
+version: 1.0.0
+author: ZGRIC
+description: 解析 B 站视频 BV/AV 号，返回标题/UP/数据/封面
+priority: 50
+dependencies:
+  python:
+    - "httpx"

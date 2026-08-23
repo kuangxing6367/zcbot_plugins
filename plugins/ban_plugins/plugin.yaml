@@ -1,0 +1,5 @@
+name: 插件开关管理
+version: 1.0.0
+author: ZGRIC
+description: 超级管理员对任意插件做群级/全局启停管理
+priority: 50

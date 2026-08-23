@@ -1,0 +1,5 @@
+name: 自动进群
+version: 1.0.0
+author: ZGRIC
+description: 自动接受邀请机器人进群，可选自动通过加群申请
+priority: 50

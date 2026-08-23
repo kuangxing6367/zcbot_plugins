@@ -1,0 +1,5 @@
+name: 戳一戳回复
+version: 1.0.0
+author: ZGRIC
+description: 有人戳机器人时趣味回应，可开启反戳或自定义语料
+priority: 50

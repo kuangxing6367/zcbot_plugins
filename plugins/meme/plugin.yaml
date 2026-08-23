@@ -1,0 +1,8 @@
+name: 表情包生成
+version: 1.0.0
+author: ZGRIC
+description: 调用 MemeGen 生成上下文字表情包图片
+priority: 50
+dependencies:
+  python:
+    - "httpx"

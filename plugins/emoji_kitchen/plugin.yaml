@@ -1,0 +1,8 @@
+name: Emoji 融合
+version: 1.0.0
+author: ZGRIC
+description: 将两张 emoji 融合为组合贴纸图片
+priority: 50
+dependencies:
+  python:
+    - "httpx"

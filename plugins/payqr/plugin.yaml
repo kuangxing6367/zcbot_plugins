@@ -1,0 +1,8 @@
+name: 收款码
+version: 1.0.0
+author: ZGRIC
+description: 生成收款信息二维码（可配置收款方）
+priority: 50
+dependencies:
+  python:
+    - "httpx"

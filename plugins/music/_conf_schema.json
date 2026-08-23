@@ -1,0 +1,7 @@
+{
+  "music_source": {
+    "description": "音乐搜索源：tencent(QQ)/netease(网易云)/kugou(酷狗)",
+    "type": "string",
+    "default": "tencent"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "price_per_kg": {
+    "description": "屠宰时每公斤小猪可兑换的金币数",
+    "type": "number",
+    "default": 2
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "qzone_uin": {
+    "description": "机器人 QQ 号（用于构造 QZone 接口地址）",
+    "type": "string",
+    "default": ""
+  },
+  "qzone_cookie": {
+    "description": "完整 QZone Cookie 字符串（含 p_skey 等，用于登录态与 g_tk 计算）",
+    "type": "string",
+    "default": ""
+  }
+}
