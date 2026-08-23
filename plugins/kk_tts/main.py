@@ -145,31 +145,70 @@ def _download(url, path):
 
 
 def _mp3_to_tencent_silk(mp3_path, sample_rate=24000):
-    """mp3 -> PCM(16k mono s16) -> Tencent Silk。返回 silk bytes。"""
+    """mp3 -> PCM(16k mono s16) -> Tencent Silk。返回 silk bytes。
+
+    编码后端优先 pilk（AstrBot 同款，原生 tencent=True），降级 pysilk(tencent=True)。
+    """
     try:
         import miniaudio
-    except ImportError:
-        raise RuntimeError("缺少 miniaudio（mp3 解码库），请安装: pip install miniaudio")
-    try:
-        import pysilk
-    except ImportError:
-        raise RuntimeError("缺少 pysilk（silk 编码库），请安装: pip install pysilk")
+    except ImportError as e:
+        raise RuntimeError(f"缺少 miniaudio（mp3 解码库），请安装: pip install miniaudio ({e})")
 
-    dsf = miniaudio.decode_file(
-        mp3_path,
-        output_format=miniaudio.SampleFormat.SIGNED16,
-        nchannels=1,
-        sample_rate=sample_rate,
-    )
-    pcm = dsf.samples
+    try:
+        dsf = miniaudio.decode_file(
+            mp3_path,
+            output_format=miniaudio.SampleFormat.SIGNED16,
+            nchannels=1,
+            sample_rate=sample_rate,
+        )
+        pcm = dsf.samples
+        sr = dsf.sample_rate
+    except Exception as e:
+        raise RuntimeError(f"mp3 解码失败: {e}")
     if not pcm:
         raise RuntimeError("mp3 解码为空")
-    out = io.BytesIO()
-    # pysilk.encode(input, output, sample_rate, bit_rate, tencent=True)
-    pysilk.encode(io.BytesIO(pcm), out, sample_rate, 24000, tencent=True)
-    silk = out.getvalue()
+
+    silk = None
+    err_pilk = None
+    err_pysilk = None
+
+    # 后端1: pilk（AstrBot 同款，原生 tencent=True）
+    try:
+        import pilk
+        import wave
+        wav_tmp = mp3_path + ".wav"
+        with wave.open(wav_tmp, "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(sr)
+            w.writeframes(pcm)
+        silk_tmp = mp3_path + ".silk"
+        pilk.encode(wav_tmp, silk_tmp, pcm_rate=sr, tencent=True)
+        with open(silk_tmp, "rb") as f:
+            silk = f.read()
+        try:
+            os.remove(wav_tmp)
+            os.remove(silk_tmp)
+        except Exception:
+            pass
+    except Exception as e:
+        err_pilk = e
+
+    # 后端2: pysilk(tencent=True)
+    if silk is None:
+        try:
+            import pysilk
+            out = io.BytesIO()
+            pysilk.encode(io.BytesIO(pcm), out, sr, 24000, tencent=True)
+            silk = out.getvalue()
+        except Exception as e:
+            err_pysilk = e
+
     if not silk:
-        raise RuntimeError("silk 编码为空")
+        raise RuntimeError(
+            "silk 编码失败（pilk/pysilk 均不可用）。请在框架 Python 环境安装其一: "
+            f"pip install pilk 或 pip install pysilk。pilk错误={err_pilk}; pysilk错误={err_pysilk}"
+        )
     return silk
 
 
