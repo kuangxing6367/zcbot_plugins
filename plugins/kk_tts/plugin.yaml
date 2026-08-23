@@ -5,8 +5,9 @@ description: 调用枫雨恶搞语音TTS接口，文字转抽象语音并转码S
 version: 1.0.0
 author: ZGRIC
 priority: 50
-# 依赖：mp3 解码用 miniaudio（本机无 ffmpeg），silk 编码用 pysilk（tencent=True）
+# 依赖：mp3 解码用 miniaudio（本机无 ffmpeg）；
+# silk 编码用 silk-python（PyPI 包名，导入名 pysilk，自带 tencent=True，含预编译 wheel，无需 gcc）
 dependencies:
   python:
     - miniaudio
-    - pysilk
+    - silk-python

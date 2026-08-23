@@ -169,45 +169,45 @@ def _mp3_to_tencent_silk(mp3_path, sample_rate=24000):
         raise RuntimeError("mp3 解码为空")
 
     silk = None
-    err_pilk = None
     err_pysilk = None
+    err_pilk = None
 
-    # 后端1: pilk（AstrBot 同款，原生 tencent=True）
+    # 后端1: pysilk（由 silk-python 提供，自带 tencent=True，有预编译 wheel，无需 gcc）
     try:
-        import pilk
-        import wave
-        wav_tmp = mp3_path + ".wav"
-        with wave.open(wav_tmp, "wb") as w:
-            w.setnchannels(1)
-            w.setsampwidth(2)
-            w.setframerate(sr)
-            w.writeframes(pcm)
-        silk_tmp = mp3_path + ".silk"
-        pilk.encode(wav_tmp, silk_tmp, pcm_rate=sr, tencent=True)
-        with open(silk_tmp, "rb") as f:
-            silk = f.read()
-        try:
-            os.remove(wav_tmp)
-            os.remove(silk_tmp)
-        except Exception:
-            pass
+        import pysilk
+        out = io.BytesIO()
+        pysilk.encode(io.BytesIO(pcm), out, sr, 24000, tencent=True)
+        silk = out.getvalue()
     except Exception as e:
-        err_pilk = e
+        err_pysilk = e
 
-    # 后端2: pysilk(tencent=True)
+    # 后端2: pilk（AstrBot 同款，原生 tencent=True，需 gcc 编译）
     if silk is None:
         try:
-            import pysilk
-            out = io.BytesIO()
-            pysilk.encode(io.BytesIO(pcm), out, sr, 24000, tencent=True)
-            silk = out.getvalue()
+            import pilk
+            import wave
+            wav_tmp = mp3_path + ".wav"
+            with wave.open(wav_tmp, "wb") as w:
+                w.setnchannels(1)
+                w.setsampwidth(2)
+                w.setframerate(sr)
+                w.writeframes(pcm)
+            silk_tmp = mp3_path + ".silk"
+            pilk.encode(wav_tmp, silk_tmp, pcm_rate=sr, tencent=True)
+            with open(silk_tmp, "rb") as f:
+                silk = f.read()
+            try:
+                os.remove(wav_tmp)
+                os.remove(silk_tmp)
+            except Exception:
+                pass
         except Exception as e:
-            err_pysilk = e
+            err_pilk = e
 
     if not silk:
         raise RuntimeError(
-            "silk 编码失败（pilk/pysilk 均不可用）。请在框架 Python 环境安装其一: "
-            f"pip install pilk 或 pip install pysilk。pilk错误={err_pilk}; pysilk错误={err_pysilk}"
+            "silk 编码失败（pysilk/pilk 均不可用）。请在框架 Python 环境安装: "
+            f"pip install silk-python（提供 pysilk 模块，含预编译 wheel）。pysilk错误={err_pysilk}; pilk错误={err_pilk}"
         )
     return silk
 
