@@ -192,6 +192,19 @@
       "repo": "kuangxing6367/zcbot_plugins",
       "branch": "main",
       "sub_path": "plugins/video_parse"
+    },
+    {
+      "name": "kk_tts",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "调用枫雨恶搞语音TTS，文字转抽象语音并转码Silk后发送；已注册为LLM AI函数",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/kk_tts",
+      "dependencies": [
+        "miniaudio",
+        "pysilk"
+      ]
     }
   ]
 }

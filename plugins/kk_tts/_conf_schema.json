@@ -1,0 +1,22 @@
+{
+  "api_url": {
+    "description": "枫雨恶搞语音TTS接口地址",
+    "type": "string",
+    "default": "https://api-v2.yuafeng.cn/API/kktts.php"
+  },
+  "voice_id": {
+    "description": "默认恶搞声音ID，留空使用内置默认声音",
+    "type": "string",
+    "default": "94b8f3ec59b18723224b7ac5e3fa3a07"
+  },
+  "enable_llm": {
+    "description": "是否注册为LLM AI函数（允许LLM在对话中调用本插件生成语音）",
+    "type": "boolean",
+    "default": true
+  },
+  "max_text_len": {
+    "description": "单次转换文字最大长度，超过将被截断",
+    "type": "number",
+    "default": 200
+  }
+}

@@ -1,0 +1,12 @@
+name: kk_tts
+module: kk_tts
+display_name: 恶搞语音TTS
+description: 调用枫雨恶搞语音TTS接口，文字转抽象语音并转码Silk后发送；已注册为LLM AI函数
+version: 1.0.0
+author: ZGRIC
+priority: 50
+# 依赖：mp3 解码用 miniaudio（本机无 ffmpeg），silk 编码用 pysilk（tencent=True）
+dependencies:
+  python:
+    - miniaudio
+    - pysilk
