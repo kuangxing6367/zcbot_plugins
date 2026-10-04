@@ -1,0 +1,5 @@
+name: 插件依赖图
+version: 1.0.0
+author: ZGRIC
+description: 扫描插件间依赖关系（DB 统一管理），/依赖 文本树 /依赖图 图片
+priority: 10

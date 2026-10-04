@@ -1,0 +1,5 @@
+name: 广播通知
+version: 2.0.0
+author: ZGRIC
+description: 超管广播通知套件：向全部/指定群与好友发送通知，支持引用消息转发（文本/图片/文件）、定时周期广播与发送间隔配置
+priority: 55

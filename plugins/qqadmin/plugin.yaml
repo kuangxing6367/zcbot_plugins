@@ -1,0 +1,5 @@
+name: qqadmin
+version: 1.2.0
+author: ZGRIC
+description: QQ群管插件：禁言/踢人/全禁/精华/公告/宵禁/违禁词/进群管理/协管/群打卡/数据导出/事件监听/开关机
+priority: 90

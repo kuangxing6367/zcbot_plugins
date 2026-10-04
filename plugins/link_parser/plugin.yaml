@@ -1,0 +1,9 @@
+name: 链接解析
+version: 1.0.0
+author: ZGRIC
+description: B站/视频分享/网页链接统一解析：自动识别平台分发，支持 LLM 函数
+priority: 45
+
+dependencies:
+  python:
+    - "httpx"

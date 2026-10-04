@@ -1,0 +1,37 @@
+{
+  "send_interval": {
+    "description": "发送间隔：广播时相邻两个目标之间的最大间隔（秒），实际间隔在 0~该值之间随机，用于错开发送、防刷屏风控",
+    "type": "number",
+    "default": 1.1
+  },
+  "skip_source": {
+    "description": "引用转发广播时是否跳过发出该消息的群/好友（避免发回触发会话）",
+    "type": "boolean",
+    "default": true
+  },
+  "schedule_enabled": {
+    "description": "定时广播总开关（可用命令「定时广播 开/关」临时覆盖，重启后跟随本配置）",
+    "type": "boolean",
+    "default": false
+  },
+  "schedule_cron": {
+    "description": "定时广播触发时间，五段 cron 表达式（分 时 日 月 周），例如 0 9 * * * 表示每天 09:00；改动约 1 分钟内生效",
+    "type": "string",
+    "default": "0 9 * * *"
+  },
+  "schedule_scope": {
+    "description": "定时广播目标范围：group=全部群，friend=全部好友，all=群聊+好友（「关闭广播」名单始终生效）",
+    "type": "string",
+    "default": "group"
+  },
+  "schedule_targets": {
+    "description": "定时广播指定目标列表（群号或 QQ 号）；非空时仅向这些目标发送，忽略上方目标范围设置",
+    "type": "array",
+    "default": []
+  },
+  "schedule_content": {
+    "description": "定时广播内容模板，支持占位符 {date}（日期）、{time}（时间）、{datetime}（日期时间），支持 CQ 码；可用命令「定时广播 内容 <文本>」临时覆盖",
+    "type": "string",
+    "default": ""
+  }
+}

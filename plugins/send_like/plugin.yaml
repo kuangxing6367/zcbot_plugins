@@ -1,0 +1,5 @@
+name: 赞我
+version: 3.0.0
+author: ZGRIC
+description: 点赞插件：普通用户0~8随机赞，超管每天固定10赞，支持自动点赞
+priority: 50

@@ -1,0 +1,5 @@
+name: LLM日志
+version: 1.0.0
+author: ZGRIC
+description: 记录每次 LLM 对话的次数/耗时/工具调用统计，提供 /对话日志 /对话统计 查询
+priority: 80

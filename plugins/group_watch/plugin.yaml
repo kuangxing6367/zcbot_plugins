@@ -1,0 +1,5 @@
+name: 群事件监听
+version: 1.1.0
+author: ZGRIC
+description: 管理员变动/成员进出/禁言/撤回等群事件主动提示，按群开关，昵称解析
+priority: 30

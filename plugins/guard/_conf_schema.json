@@ -1,0 +1,114 @@
+{
+  "exempt_admin": {
+    "description": "管理员/群主/超管豁免：跳过屏蔽名单、群白名单、唤醒词、敏感词、限流各环节（全局黑名单表不豁免）；同时作为刷屏检测群级「管理员豁免」的默认值",
+    "type": "boolean",
+    "default": true,
+    "hint": "建议开启，否则劝架的管理员会被一起禁言"
+  },
+  "block_users": {
+    "description": "屏蔽名单（逗号分隔 QQ 号，这些用户的消息不响应）",
+    "type": "string",
+    "default": ""
+  },
+  "whitelist_enable": {
+    "description": "群白名单开关：开启后只有白名单内的群会得到响应",
+    "type": "boolean",
+    "default": false
+  },
+  "whitelist_groups": {
+    "description": "白名单群号（逗号分隔，不在名单的群不响应）",
+    "type": "string",
+    "default": ""
+  },
+  "wake_enable": {
+    "description": "群聊唤醒词开关（仅 @机器人 或 唤醒前缀开头的消息才响应）",
+    "type": "boolean",
+    "default": false
+  },
+  "wake_prefixes": {
+    "description": "唤醒前缀（逗号分隔，如 /bot,bot,，消息以此开头才响应）",
+    "type": "string",
+    "default": "",
+    "hint": "留空时不启用唤醒拦截，避免消息被全部丢弃"
+  },
+  "wake_private": {
+    "description": "私聊是否也需要唤醒（默认私聊全放行）",
+    "type": "boolean",
+    "default": false
+  },
+  "sensitive_enable": {
+    "description": "敏感词过滤开关：命中即静默丢弃",
+    "type": "boolean",
+    "default": false
+  },
+  "sensitive_words": {
+    "description": "敏感词列表（逗号分隔，消息文本包含即丢弃）",
+    "type": "string",
+    "default": ""
+  },
+  "rate_enable": {
+    "description": "限流开关：按「用户+群」固定窗口计数，超限的消息静默丢弃",
+    "type": "boolean",
+    "default": false
+  },
+  "rate_count": {
+    "description": "限流：窗口内允许的消息数",
+    "type": "number",
+    "default": 5
+  },
+  "rate_seconds": {
+    "description": "限流：窗口秒数",
+    "type": "number",
+    "default": 10
+  },
+  "default_enabled": {
+    "description": "刷屏检测：新群默认是否启用（群级配置优先于此项）",
+    "type": "boolean",
+    "default": true
+  },
+  "user_threshold": {
+    "description": "刷屏检测（单人）：窗口内消息条数上限",
+    "type": "number",
+    "default": 8
+  },
+  "user_window": {
+    "description": "刷屏检测（单人）：统计窗口（秒）",
+    "type": "number",
+    "default": 5
+  },
+  "user_mute": {
+    "description": "刷屏检测（单人）：命中后的禁言时长（秒）",
+    "type": "number",
+    "default": 300
+  },
+  "group_threshold": {
+    "description": "刷屏检测（群体）：窗口内整群消息条数上限",
+    "type": "number",
+    "default": 20
+  },
+  "group_window": {
+    "description": "刷屏检测（群体）：统计窗口（秒）",
+    "type": "number",
+    "default": 5
+  },
+  "group_mute": {
+    "description": "刷屏检测（群体）：命中后的全体禁言时长（秒）",
+    "type": "number",
+    "default": 600
+  },
+  "spam_notify": {
+    "description": "刷屏检测：处置后在群内发提示",
+    "type": "boolean",
+    "default": true
+  },
+  "llm_block_tip": {
+    "description": "LLM 对话拦截：命中名单时的拒绝提示语",
+    "type": "string",
+    "default": "你已被拉黑，无法使用 LLM 对话。"
+  },
+  "llm_list_limit": {
+    "description": "LLM 对话拦截：/插件黑名单 列表最多展示条数",
+    "type": "number",
+    "default": 20
+  }
+}

@@ -1,0 +1,9 @@
+name: 娱乐语料包
+version: 1.0.0
+author: ZGRIC
+description: 本地语料娱乐合集：笑话/绕口令/脑筋急转弯/星座/抽签/今日运势/名言/趣味测试/CP 关系缘分
+priority: 70
+
+dependencies:
+  python:
+    - "httpx"

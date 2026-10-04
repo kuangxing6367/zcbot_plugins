@@ -1,0 +1,5 @@
+name: 防护中心
+version: 1.0.0
+author: ZGRIC
+description: 统一防护套件：全局黑名单/群白名单与唤醒词/敏感词/限流/刷屏检测/LLM 对话拦截，一条拦截链集中管理
+priority: 3

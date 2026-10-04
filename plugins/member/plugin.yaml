@@ -1,0 +1,5 @@
+name: 成员数据中枢
+version: 1.0.0
+author: ZGRIC
+description: 群成员与发言数据中枢：消息流水记录、成员索引/查询、发言排行卡片图、成员 CSV 导出
+priority: 60

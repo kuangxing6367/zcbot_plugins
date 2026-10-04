@@ -1,5 +1,0 @@
-name: 用户同步
-version: 1.0.0
-author: ZGRIC
-description: 拉取并索引群成员，支持按 QQ 反查所在群
-priority: 50

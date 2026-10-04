@@ -1,0 +1,5 @@
+name: LLM文件发送
+version: 1.0.0
+author: ZGRIC
+description: 给 LLM 一个发送文件的函数：按 URL 下载并发送图片/语音/视频/文件，同时提供 /发文件 命令
+priority: 55

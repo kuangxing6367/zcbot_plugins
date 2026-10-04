@@ -1,0 +1,9 @@
+name: 关键词引擎
+version: 1.0.0
+author: ZGRIC
+description: 关键词/正则统一触发引擎：自动回复、外部 API 调用、监控私聊通知，支持本群/全局作用域、启用禁用与命中统计
+priority: 40
+
+dependencies:
+  python:
+    - "requests"

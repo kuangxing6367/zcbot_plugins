@@ -1,0 +1,5 @@
+name: 重启管理器
+version: 1.0.1
+author: zgric
+description: 超级管理员 /重启 原地重启框架，完成后回执内存占用
+priority: 50

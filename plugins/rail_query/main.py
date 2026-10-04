@@ -1,7 +1,6 @@
 """
 列车查询插件 (rail_query)
 =========================
-功能（从 AstrBot「railquery」类插件迁移，功能逻辑重写）：
   /列车 <车次>    -> 查询列车经停站、到发时间、历时
   /车次 <车次>    -> 同上（别名）
 数据来源：oioweb 公共列车接口 api.oioweb.cn/api/train/query。

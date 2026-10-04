@@ -1,0 +1,5 @@
+name: 会话等待器
+version: 1.0.0
+author: ZGRIC
+description: 多轮会话基础设施：插件可等待用户下一条消息（wait_for_user）
+priority: 1

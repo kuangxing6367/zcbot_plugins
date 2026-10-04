@@ -5,8 +5,4 @@ author: tinker
 description: 查询所有已注册命令，生成图片帮助菜单
 priority: 100
 
-# Python 依赖（框架启动时自动检查并安装缺失项）
-dependencies:
-  python:
-    - "Pillow>=10.0.0"
-    - "numpy>=1.24.0"
+# 图片渲染由 image_renderer 插件承担，本插件无第三方 Python 依赖

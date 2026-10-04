@@ -1,0 +1,56 @@
+{
+  "enable": {
+    "description": "自动回复动作总开关",
+    "hint": "关闭后命中自动回复规则不再回复；管理命令与 API/监控动作不受影响",
+    "type": "boolean",
+    "default": true
+  },
+  "api_enable": {
+    "description": "API 动作总开关",
+    "hint": "关闭后关键词触发的外部接口调用不再执行、不再回复",
+    "type": "boolean",
+    "default": true
+  },
+  "watch_enable": {
+    "description": "监控通知动作总开关",
+    "hint": "关闭后命中监控词不再私聊通知超级管理员",
+    "type": "boolean",
+    "default": true
+  },
+  "forbidden_check_enabled": {
+    "description": "添加规则时违禁词检测",
+    "hint": "开启后添加关键词/回复内容时调用违禁词检测接口，含违禁词将拒绝添加；接口异常时放行不拦截",
+    "type": "boolean",
+    "default": false
+  },
+  "forbidden_api_url": {
+    "description": "违禁词检测接口地址",
+    "hint": "GET 接口，自动携带 text 参数；返回 JSON 中 code=1 表示命中违禁词，取 filtered_text 作为提示",
+    "type": "string",
+    "default": "https://api-v2.yuafeng.cn/API/wjc.php"
+  },
+  "forbidden_api_key": {
+    "description": "违禁词检测接口密钥",
+    "hint": "非空时以 key 参数随请求发送；留空表示接口无需密钥",
+    "type": "string",
+    "default": ""
+  },
+  "timeout": {
+    "description": "API 动作请求超时时间（秒）",
+    "hint": "调用规则绑定的外部接口时的超时时间",
+    "type": "number",
+    "default": 10
+  },
+  "cache_ttl": {
+    "description": "规则缓存刷新间隔（秒）",
+    "hint": "命中匹配使用内存缓存；通过命令增删改规则会立即刷新，此值仅影响缓存自然过期时间",
+    "type": "number",
+    "default": 30
+  },
+  "max_reply_len": {
+    "description": "API 动作回复最大长度",
+    "hint": "API 返回内容超出将被截断；自动回复动作不受此限制",
+    "type": "number",
+    "default": 2000
+  }
+}

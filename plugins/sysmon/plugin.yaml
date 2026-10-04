@@ -1,0 +1,9 @@
+name: 运行监控
+version: 2.0.0
+author: ZGRIC
+description: 运行监控套件：框架状态/系统资源/插件内存统计与诊断（/status /info /uptime /plugins /mem /memdiag），支持状态卡片图、仪表盘卡片与 WebUI 页面
+priority: 65
+
+dependencies:
+  python:
+    - "psutil>=5.9.0"

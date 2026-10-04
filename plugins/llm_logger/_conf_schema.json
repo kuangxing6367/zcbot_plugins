@@ -1,0 +1,17 @@
+{
+  "max_records": {
+    "description": "日志保留条数上限，超过自动截断最旧记录（0 表示不限制）",
+    "type": "number",
+    "default": 5000
+  },
+  "log_failed": {
+    "description": "是否记录失败的对话（模型报错或未返回内容）",
+    "type": "boolean",
+    "default": true
+  },
+  "overview_default": {
+    "description": "/对话日志 未指定条数时默认显示的条数（单次最多 100）",
+    "type": "number",
+    "default": 10
+  }
+}

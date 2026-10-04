@@ -1259,8 +1259,8 @@ def _execute_framework_tool(ctx, name: str, args: dict):
 
             # 4) 覆盖白名单内的代码/配置文件（用户数据一律跳过）
             include = {
-                'framework', 'web', 'sql', 'main.py', 'requirements.txt',
-                'start.sh', '.gitignore', 'README.md', 'LICENSE', 'VERSION',
+                'framework', 'core_plugins', 'webui', 'sql', 'main.py', 'requirements.txt',
+                'start.sh', '.gitignore', 'README.md', 'LICENSE', 'VERSION', 'CHANGELOG.md',
             }
             updated = []
             for item in os.listdir(src_root):

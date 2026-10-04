@@ -7,7 +7,6 @@
 协议说明：
 - 入站 mp3 来自 https://api-v2.yuafeng.cn/API/kktts.php?content=..&action=voice&voice_id=..
 - QQ 官方机器人发送语音必须为 Tencent Silk（silk_v3 + tencent 封装），
-  标准参考 astrbot.core.utils.tencent_record_helper（pilk/pysilk tencent=True）
 - 本机无 ffmpeg，mp3 解码用 miniaudio（自带 dr_mp3），silk 编码用 pysilk(tencent=True)
 """
 import asyncio
@@ -40,7 +39,7 @@ def register(ctx):
     ctx.command("/恶搞语音", handle_tts,
                 alias=["/kktts", "/抽象语音", "/恶搞念"],
                 description="将文字转换为恶搞/抽象语音发送（用法: /恶搞语音 文字）")
-    # 注册 LLM 函数（llm_chat 可能晚于本插件加载，故同时监听加载事件补注册）
+    # 注册 LLM 函数（llm_core 可能晚于本插件加载，故同时监听加载事件补注册）
     _try_register_llm()
     ctx.on("system.plugin.loaded", _on_plugins_loaded)
 
@@ -147,7 +146,6 @@ def _download(url, path):
 def _mp3_to_tencent_silk(mp3_path, sample_rate=24000):
     """mp3 -> PCM(16k mono s16) -> Tencent Silk。返回 silk bytes。
 
-    编码后端优先 pilk（AstrBot 同款，原生 tencent=True），降级 pysilk(tencent=True)。
     """
     try:
         import miniaudio
@@ -181,7 +179,6 @@ def _mp3_to_tencent_silk(mp3_path, sample_rate=24000):
     except Exception as e:
         err_pysilk = e
 
-    # 后端2: pilk（AstrBot 同款，原生 tencent=True，需 gcc 编译）
     if silk is None:
         try:
             import pilk
@@ -233,29 +230,20 @@ def _try_register_llm():
     if not _ctx.get_config("enable_llm", True):
         return
     try:
-        import plugin_llm_chat as llm_mod
-        llm_mod.register_llm_function(
-            name="kk_tts",
-            description=(
-                "将文字转换为恶搞/抽象语音并直接发送语音消息。"
-                "当用户想用趣味、搞怪、抽象的声音念出某段文字，或明确要求生成语音时使用。"
-                "参数 text 为要念出的文字；voice_id 可选，指定不同恶搞声音。"
-            ),
-            parameters={
-                "type": "object",
-                "properties": {
-                    "text": {"type": "string", "description": "要转换为语音的文字内容"},
-                    "voice_id": {"type": "string", "description": "可选，恶搞声音ID，留空用默认声音"},
-                },
-                "required": ["text"],
-            },
-            handler=_fn_kk_tts,
-            plugin_name="kk_tts",
-        )
+        svc = _ctx._framework.services.get('llm_core')  # llm_core 服务门面
+        if svc is None:
+            raise RuntimeError("llm_core 服务未加载")
+
+        @svc.tool(name="kk_tts",
+                  description=("将文字转换为恶搞/抽象语音并直接发送语音消息。"
+                               "当用户想用趣味、搞怪、抽象的声音念出某段文字，或明确要求生成语音时使用。"
+                               "参数 text 为要念出的文字；voice_id 可选，指定不同恶搞声音。"))
+        def kk_tts(text: str, voice_id: str = '', event=None):
+            return _fn_kk_tts({'text': text, 'voice_id': voice_id}, None, event, None)
         _llm_registered = True
         _ctx.log("[kk_tts] LLM 函数 kk_tts 注册成功", level="info")
     except Exception as e:
-        _ctx.log(f"[kk_tts] LLM 函数注册失败（llm_chat 未加载?）: {e}", level="warning")
+        _ctx.log(f"[kk_tts] LLM 函数注册失败（llm_core 未加载?）: {e}", level="warning")
 
 
 async def _fn_kk_tts(args, _c, _event, _user_id):

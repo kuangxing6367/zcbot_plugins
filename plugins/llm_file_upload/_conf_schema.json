@@ -1,0 +1,29 @@
+{
+  "enable_llm": {
+    "description": "注册为 LLM 函数（模型可自行调用）",
+    "type": "boolean",
+    "default": true,
+    "hint": "关闭后仅保留 /发文件 命令"
+  },
+  "max_file_size": {
+    "description": "单文件体积上限（MB）",
+    "type": "number",
+    "default": 50
+  },
+  "timeout": {
+    "description": "下载超时（秒）",
+    "type": "number",
+    "default": 30
+  },
+  "retain_hours": {
+    "description": "落盘文件保留时长（小时），定时清理",
+    "type": "number",
+    "default": 24
+  },
+  "allowed_extensions": {
+    "description": "扩展名白名单（逗号分隔，留空=不限）",
+    "type": "string",
+    "default": "",
+    "hint": "例：.jpg,.png,.mp4"
+  }
+}

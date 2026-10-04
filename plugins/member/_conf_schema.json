@@ -1,0 +1,42 @@
+{
+  "log_enable": {
+    "description": "消息流水记录开关：开启后记录所有入站消息的纯文本（仅记录，不影响消息正常处理）",
+    "type": "boolean",
+    "default": true
+  },
+  "log_max_len": {
+    "description": "单条消息记录的最大文本长度，超出部分截断（字符数）",
+    "type": "number",
+    "default": 2000
+  },
+  "retention_days": {
+    "description": "消息流水留存天数：每日清理任务会删除超过该天数的旧记录（0 表示永久保留）",
+    "type": "number",
+    "default": 90
+  },
+  "log_max_records": {
+    "description": "消息流水最大保留条数：每日清理任务保留最新该条数，删除更旧的记录（0 表示不限制）",
+    "type": "number",
+    "default": 0
+  },
+  "rank_top_n": {
+    "description": "/群发言排行 显示的人数上限（1-50）",
+    "type": "number",
+    "default": 10
+  },
+  "rank_card_enable": {
+    "description": "发言排行/统计结果用卡片图片输出（需安装并启用图片渲染器插件，渲染失败自动回退纯文本）",
+    "type": "boolean",
+    "default": true
+  },
+  "export_keep_days": {
+    "description": "导出的成员 CSV 文件保留天数：每日清理任务删除过期文件（0 表示永久保留）",
+    "type": "number",
+    "default": 7
+  },
+  "cleanup_cron": {
+    "description": "每日清理任务的 cron 表达式（分 时 日 月 周），修改后热加载插件生效",
+    "type": "string",
+    "default": "30 4 * * *"
+  }
+}

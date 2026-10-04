@@ -1,0 +1,50 @@
+{
+  "enabled": {
+    "description": "新群默认是否启用事件监听",
+    "type": "boolean",
+    "default": true,
+    "hint": "群级配置优先于此项"
+  },
+  "watch_join": {
+    "description": "提示成员加入",
+    "type": "boolean",
+    "default": true
+  },
+  "watch_leave": {
+    "description": "提示成员离开（退群/被踢）",
+    "type": "boolean",
+    "default": true
+  },
+  "watch_admin": {
+    "description": "提示管理员变动",
+    "type": "boolean",
+    "default": true
+  },
+  "watch_ban": {
+    "description": "提示禁言/解禁",
+    "type": "boolean",
+    "default": true
+  },
+  "watch_recall": {
+    "description": "提示消息撤回",
+    "type": "boolean",
+    "default": true
+  },
+  "watch_poke": {
+    "description": "提示戳一戳",
+    "type": "boolean",
+    "default": false,
+    "hint": "默认关闭，大群里会很吵"
+  },
+  "show_operator": {
+    "description": "提示里显示操作者",
+    "type": "boolean",
+    "default": true
+  },
+  "resolve_nick": {
+    "description": "把事件中的QQ号解析为群昵称显示",
+    "type": "boolean",
+    "default": true,
+    "hint": "关闭后直接显示QQ号，可减少接口调用"
+  }
+}

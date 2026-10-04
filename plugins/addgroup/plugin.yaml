@@ -1,0 +1,5 @@
+name: 加群邀请
+version: 1.0.0
+author: ZGRIC
+description: 生成群邀请链接、机器人主动退群
+priority: 50

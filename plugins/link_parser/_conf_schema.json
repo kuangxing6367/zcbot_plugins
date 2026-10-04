@@ -1,0 +1,47 @@
+{
+  "auto_parse": {
+    "description": "自动解析总开关(关闭后仅命令触发)",
+    "type": "boolean",
+    "default": true
+  },
+  "group_auto_parse": {
+    "description": "群聊内视频链接自动解析",
+    "type": "boolean",
+    "default": true
+  },
+  "private_auto_parse": {
+    "description": "私聊视频链接自动解析",
+    "type": "boolean",
+    "default": true
+  },
+  "fengyu_api_url": {
+    "description": "视频聚合解析接口地址(除B站外的视频平台走此接口)",
+    "type": "string",
+    "default": "https://api-v2.yuafeng.cn/API/juhejx.php"
+  },
+  "fengyu_api_key": {
+    "description": "视频聚合解析接口密钥;不配置时仅B站解析可用,其他视频平台解析关闭",
+    "type": "string",
+    "default": ""
+  },
+  "send_cover": {
+    "description": "解析结果附带封面图",
+    "type": "boolean",
+    "default": true
+  },
+  "cooldown_seconds": {
+    "description": "同一链接自动解析冷却秒数(防刷屏,0为不冷却)",
+    "type": "number",
+    "default": 30
+  },
+  "max_title_len": {
+    "description": "视频标题最大显示长度",
+    "type": "number",
+    "default": 100
+  },
+  "timeout": {
+    "description": "聚合解析接口超时秒数",
+    "type": "number",
+    "default": 10
+  }
+}

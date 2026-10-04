@@ -1,11 +1,9 @@
 """
 帮助系统插件 - 查询所有已注册命令并生成图片帮助菜单
-从 AstrBot 迁移至 zgric_onebot11 新语法
 
-原插件依赖 AstrBot 的 star_handlers_registry 获取命令，
 新框架中命令存储在 MySQL 的 commands 表，plugins 表存储插件元数据。
 
-本插件使用 Pillow 渲染图片帮助菜单（纯 Python，无 numpy 依赖），
+本插件经 image_renderer 的原生 Canvas 渲染图片帮助菜单（无 PIL/numpy 依赖），
 图片保存到临时文件，通过 CQ 码 [CQ:image,file=file:///路径] 发送，
 发送完成后立即删除临时文件。
 
@@ -328,9 +326,9 @@ def handle_help(event, match):
         _plugin_dir = _os.path.dirname(_os.path.abspath(__file__))
         if _plugin_dir not in _sys.path:
             _sys.path.insert(0, _plugin_dir)
-        from draw import AstrBotHelpDrawer
+        from draw import HelpDrawer
 
-        drawer = AstrBotHelpDrawer(drawer_config)
+        drawer = HelpDrawer(drawer_config)
         image_bytes = drawer.draw_help_image(plugin_commands)
         # 释放 drawer（含 resized_logo 等资源）
         del drawer

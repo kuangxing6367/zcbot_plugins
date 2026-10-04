@@ -4,6 +4,10 @@ author: ZGRIC
 description: 从 GitHub 拉取网页模板接管 Web 面板，提供模板选择/下载/安装/切换
 priority: 250
 
+dependencies:
+  python:
+    - "requests"
+
 github:
   repo: kuangxing6367/zcbot_plugins
   branch: main

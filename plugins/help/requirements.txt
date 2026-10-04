@@ -1,3 +1,1 @@
-# help 插件图片渲染依赖
-Pillow>=10.0.0
-numpy>=1.24.0
+# help 本身无第三方 Python 依赖（图片渲染由 image_renderer 插件承担）

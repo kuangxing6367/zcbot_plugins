@@ -1,2 +1,4 @@
+# mp3 解码用 miniaudio；silk 编码用 silk-python（导入名 pysilk，含预编译 wheel）
 miniaudio
-pysilk
+silk-python
+requests

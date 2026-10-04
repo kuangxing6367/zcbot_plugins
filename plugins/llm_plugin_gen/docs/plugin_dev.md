@@ -38,6 +38,26 @@ def handler(event, match):
 | `ctx.db_query(sql, params)` / `ctx.db_execute(sql, params)` | 数据库操作 |
 | `ctx.api(action, **params)` | OneBot API |
 | `ctx.task(cron_expr, executor)` | 定时任务 |
+| `ctx.webui(title, entry, icon=..., order=...)` | 注册 WebUI 页面 |
+
+## WebUI 开发注意
+
+**重要：Flask 路由必须在首次请求前注册，否则 `add_url_rule()` 会报错。**
+
+正确做法：在 `register(ctx)` 中直接调用 `app.add_url_rule()`，不要延迟到心跳或定时任务中。
+
+```python
+def register(ctx):
+    # 注册命令...
+    ctx.webui("页面标题", "index.html", icon="🔧", order=10)
+    # 在 register 中直接注册路由（此时 Flask 尚未处理请求）
+    app = ctx._framework.web_server.app
+    if app:
+        app.add_url_rule("/api/my_plugin/data", endpoint="my_data",
+                         view_func=my_data_handler, methods=["GET"])
+```
+
+错误做法：在心跳/定时任务/异步回调中注册路由（此时 Flask 已处理过请求，会抛异常）。
 
 ## event 对象字段
 

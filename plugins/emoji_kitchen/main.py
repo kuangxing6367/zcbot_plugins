@@ -1,7 +1,6 @@
 """
 Emoji 融合插件 (emoji_kitchen)
 ==============================
-功能（从 AstrBot「emojikitchen」类插件迁移，功能逻辑重写）：
   /表情融合 <emoji1> <emoji2>  -> 调用 Emoji Kitchen 生成两张 emoji 的组合贴纸并返回图片
   /emoji <e1> <e2>             -> 同上（别名）
 数据来源：Emoji Kitchen 公共接口 api.emojikitchen.dev。

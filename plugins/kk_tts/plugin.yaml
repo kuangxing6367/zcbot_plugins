@@ -11,3 +11,4 @@ dependencies:
   python:
     - miniaudio
     - silk-python
+    - requests

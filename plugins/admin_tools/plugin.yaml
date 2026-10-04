@@ -1,0 +1,5 @@
+name: LLM 管群工具
+version: 1.0.0
+author: ZGRIC
+description: 注册禁言/解禁/踢人为 llm_core AI 函数，模型经权限校验后协助群管
+priority: 80

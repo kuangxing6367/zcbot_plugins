@@ -1,0 +1,22 @@
+{
+  "refresh_interval": {
+    "description": "插件内存统计缓存有效期（秒）：/mem、仪表盘内存卡与 WebUI 页面读取缓存，到期后由命令或定时任务重新统计",
+    "type": "number",
+    "default": 60
+  },
+  "status_interval": {
+    "description": "系统信息采集缓存时长（秒）：期内重复查询 /status /info 直接复用上次结果，减少 psutil 采集开销",
+    "type": "number",
+    "default": 30
+  },
+  "show_cpu": {
+    "description": "/status 是否显示 CPU 使用率（CPU 采集约需 0.5 秒，关闭可加快响应）",
+    "type": "boolean",
+    "default": true
+  },
+  "show_disk": {
+    "description": "/info 是否显示磁盘占用信息",
+    "type": "boolean",
+    "default": true
+  }
+}

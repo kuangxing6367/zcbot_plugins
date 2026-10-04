@@ -1,0 +1,68 @@
+{
+  "enable_jokes": {
+    "description": "笑话类功能开关",
+    "hint": "控制 /笑话 /绕口令 /脑筋急转弯 三个命令；关闭后触发会提示功能已关闭",
+    "type": "boolean",
+    "default": true
+  },
+  "enable_fortune": {
+    "description": "运势类功能开关",
+    "hint": "控制 /星座 /抽签 /今日运势 三个命令；关闭后触发会提示功能已关闭",
+    "type": "boolean",
+    "default": true
+  },
+  "enable_quotes": {
+    "description": "名言金句功能开关",
+    "hint": "控制 /名言 /名言帮助 命令；关闭后触发会提示功能已关闭",
+    "type": "boolean",
+    "default": true
+  },
+  "enable_quiz": {
+    "description": "趣味测试功能开关",
+    "hint": "控制 /测试 /答 /测试结果 /测试帮助 命令；关闭后触发会提示功能已关闭",
+    "type": "boolean",
+    "default": true
+  },
+  "enable_bond": {
+    "description": "关系缘分功能开关",
+    "hint": "控制 /cp /关系 /今日缘分 命令；关闭后触发会提示功能已关闭",
+    "type": "boolean",
+    "default": true
+  },
+  "joke_api_enable": {
+    "description": "笑话在线接口开关",
+    "hint": "开启时 /笑话 优先请求在线接口；接口失败或关闭时自动改用本地语料，命令不会失败",
+    "type": "boolean",
+    "default": true
+  },
+  "joke_api_url": {
+    "description": "笑话在线接口地址",
+    "hint": "GET 请求，返回 JSON 中取 data.content / data.text 作为笑话内容",
+    "type": "string",
+    "default": "https://api.vvhan.com/api/text/joke"
+  },
+  "joke_api_timeout": {
+    "description": "笑话接口超时时间（秒）",
+    "hint": "超过该时间未响应即放弃在线接口，降级本地语料",
+    "type": "number",
+    "default": 8
+  },
+  "joke_fallback_hint": {
+    "description": "笑话降级提示语",
+    "hint": "在线接口失败转用本地语料时，附在笑话末尾的轻提示；留空则不附提示",
+    "type": "string",
+    "default": "（网络接口开小差了，来个本地的）"
+  },
+  "card_enable": {
+    "description": "卡片图输出开关",
+    "hint": "开启且图片渲染器可用时，签文/今日运势/名言/测试结果/羁绊值/今日缘分以卡片图发送；关闭或渲染失败自动回退同内容文本",
+    "type": "boolean",
+    "default": true
+  },
+  "quiz_wait_timeout": {
+    "description": "答题等待超时（秒）",
+    "hint": "会话等待器接管答题时，等待下一条「/答 X」消息的最长时间，超时自动结束本轮",
+    "type": "number",
+    "default": 90
+  }
+}

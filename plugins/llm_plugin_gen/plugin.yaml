@@ -1,0 +1,5 @@
+name: LLM 开发助手
+version: 1.7.0
+author: ZGRIC
+description: 对话式 LLM 插件开发（AI 项目助手工作流 V1.0：澄清疑点→6 项待办确认→逐项广播→stop/continue 干预，全异步；支持检查/更新框架源码）
+priority: 100

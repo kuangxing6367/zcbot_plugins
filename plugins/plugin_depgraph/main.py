@@ -474,7 +474,7 @@ def handle_plugin_detail(event, match):
             ctx.api("send_msg",
                     user_id=event.user_id,
                     group_id=event.group_id if event.is_group else None,
-                    message="用法: /插件详情 <插件名>，如 /插件详情 llm_chat")
+                    message="用法: /插件详情 <插件名>，如 /插件详情 llm_blacklist")
             return
         _scan_all()
         rows = ctx.db_query(

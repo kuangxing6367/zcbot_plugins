@@ -1,5 +1,0 @@
-name: 用户消息日志
-version: 1.0.0
-author: ZGRIC
-description: 记录所有入站消息，提供发言数/排行/统计查询
-priority: 50
