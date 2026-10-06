@@ -1,0 +1,160 @@
+{
+  "packages": {
+    "addgroup": {
+      "zip": "packages/addgroup.zip",
+      "size": 1403
+    },
+    "admin_tools": {
+      "zip": "packages/admin_tools.zip",
+      "size": 1541
+    },
+    "allinone": {
+      "zip": "packages/allinone.zip",
+      "size": 1945
+    },
+    "attool": {
+      "zip": "packages/attool.zip",
+      "size": 1420
+    },
+    "auto_invite": {
+      "zip": "packages/auto_invite.zip",
+      "size": 1879
+    },
+    "ban_plugins": {
+      "zip": "packages/ban_plugins.zip",
+      "size": 1722
+    },
+    "broadcast": {
+      "zip": "packages/broadcast.zip",
+      "size": 12053
+    },
+    "custom_ui": {
+      "zip": "packages/custom_ui.zip",
+      "size": 15167
+    },
+    "emoji_kitchen": {
+      "zip": "packages/emoji_kitchen.zip",
+      "size": 1605
+    },
+    "favour_ultra": {
+      "zip": "packages/favour_ultra.zip",
+      "size": 2210
+    },
+    "funbox": {
+      "zip": "packages/funbox.zip",
+      "size": 14839
+    },
+    "group_watch": {
+      "zip": "packages/group_watch.zip",
+      "size": 5439
+    },
+    "guard": {
+      "zip": "packages/guard.zip",
+      "size": 16766
+    },
+    "help": {
+      "zip": "packages/help.zip",
+      "size": 1448601
+    },
+    "image_renderer": {
+      "zip": "packages/image_renderer.zip",
+      "size": 7108635
+    },
+    "keyword": {
+      "zip": "packages/keyword.zip",
+      "size": 16246
+    },
+    "kk_tts": {
+      "zip": "packages/kk_tts.zip",
+      "size": 4985
+    },
+    "link_parser": {
+      "zip": "packages/link_parser.zip",
+      "size": 10498
+    },
+    "llm_file_upload": {
+      "zip": "packages/llm_file_upload.zip",
+      "size": 4859
+    },
+    "llm_logger": {
+      "zip": "packages/llm_logger.zip",
+      "size": 3932
+    },
+    "llm_plugin_gen": {
+      "zip": "packages/llm_plugin_gen.zip",
+      "size": 33533
+    },
+    "markdown_killer": {
+      "zip": "packages/markdown_killer.zip",
+      "size": 2765
+    },
+    "member": {
+      "zip": "packages/member.zip",
+      "size": 8403
+    },
+    "meme": {
+      "zip": "packages/meme.zip",
+      "size": 1678
+    },
+    "music": {
+      "zip": "packages/music.zip",
+      "size": 2036
+    },
+    "payqr": {
+      "zip": "packages/payqr.zip",
+      "size": 1842
+    },
+    "picture_manager": {
+      "zip": "packages/picture_manager.zip",
+      "size": 2366
+    },
+    "pig": {
+      "zip": "packages/pig.zip",
+      "size": 3538
+    },
+    "plugin_depgraph": {
+      "zip": "packages/plugin_depgraph.zip",
+      "size": 9216
+    },
+    "poke": {
+      "zip": "packages/poke.zip",
+      "size": 2305
+    },
+    "qqadmin": {
+      "zip": "packages/qqadmin.zip",
+      "size": 30602
+    },
+    "qzone": {
+      "zip": "packages/qzone.zip",
+      "size": 2705
+    },
+    "rail_query": {
+      "zip": "packages/rail_query.zip",
+      "size": 1551
+    },
+    "remote_admin": {
+      "zip": "packages/remote_admin.zip",
+      "size": 1910
+    },
+    "restart_manager": {
+      "zip": "packages/restart_manager.zip",
+      "size": 3161
+    },
+    "send_like": {
+      "zip": "packages/send_like.zip",
+      "size": 5077
+    },
+    "session_waiter": {
+      "zip": "packages/session_waiter.zip",
+      "size": 2681
+    },
+    "sysmon": {
+      "zip": "packages/sysmon.zip",
+      "size": 17701
+    },
+    "weather": {
+      "zip": "packages/weather.zip",
+      "size": 1772
+    }
+  }
+}

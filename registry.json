@@ -1,0 +1,358 @@
+{
+  "name": "ZCBOT 官方插件源",
+  "description": "ZCBOT 官方插件市场索引（由 zgric_onebot11_plugins 仓库维护）",
+  "homepage": "https://github.com/kuangxing6367/zcbot_plugins",
+  "plugins": [
+    {
+      "name": "addgroup",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "生成群邀请链接、机器人主动退群",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/addgroup"
+    },
+    {
+      "name": "admin_tools",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "注册禁言/解禁/踢人为 llm_core AI 函数，模型经权限校验后协助群管",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/admin_tools"
+    },
+    {
+      "name": "allinone",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "Base64/时间戳/随机数/哈希等本地小工具集合",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/allinone"
+    },
+    {
+      "name": "attool",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "@全体成员 / @多人工具，群管消息触达",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/attool"
+    },
+    {
+      "name": "auto_invite",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "自动接受邀请机器人进群，可选自动通过加群申请",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/auto_invite"
+    },
+    {
+      "name": "ban_plugins",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "超级管理员对任意插件做群级/全局启停管理",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/ban_plugins"
+    },
+    {
+      "name": "broadcast",
+      "version": "2.0.0",
+      "author": "ZGRIC",
+      "description": "超管广播通知套件：向全部/指定群与好友发送通知，支持引用消息转发（文本/图片/文件）、定时周期广播与发送间隔配置",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/broadcast"
+    },
+    {
+      "name": "custom_ui",
+      "version": "1.1.1",
+      "author": "ZGRIC",
+      "description": "从 GitHub 拉取网页模板接管 Web 面板，提供模板选择/下载/安装/切换",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/custom_ui"
+    },
+    {
+      "name": "emoji_kitchen",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "将两张 emoji 融合为组合贴纸图片",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/emoji_kitchen"
+    },
+    {
+      "name": "favour_ultra",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "用户与机器人的好感度：签到/赠送/排行",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/favour_ultra"
+    },
+    {
+      "name": "funbox",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "本地语料娱乐合集：笑话/绕口令/脑筋急转弯/星座/抽签/今日运势/名言/趣味测试/CP 关系缘分",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/funbox"
+    },
+    {
+      "name": "group_watch",
+      "version": "1.1.0",
+      "author": "ZGRIC",
+      "description": "管理员变动/成员进出/禁言/撤回等群事件主动提示，按群开关，昵称解析",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/group_watch"
+    },
+    {
+      "name": "guard",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "统一防护套件：全局黑名单/群白名单与唤醒词/敏感词/限流/刷屏检测/LLM 对话拦截，一条拦截链集中管理",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/guard"
+    },
+    {
+      "name": "help",
+      "version": "1.0.0",
+      "author": "tinker",
+      "description": "查询所有已注册命令，生成图片帮助菜单",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/help"
+    },
+    {
+      "name": "image_renderer",
+      "version": "1.1.0",
+      "author": "ZGRIC",
+      "description": "通用图片渲染引擎（原生 Rust 扩展自动加载，缺失自动回退 PIL），提供卡片/文本绘制工具",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/image_renderer"
+    },
+    {
+      "name": "keyword",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "关键词/正则统一触发引擎：自动回复、外部 API 调用、监控私聊通知，支持本群/全局作用域、启用禁用与命中统计",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/keyword"
+    },
+    {
+      "name": "kk_tts",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "调用枫雨恶搞语音TTS接口，文字转抽象语音并转码Silk后发送；已注册为LLM AI函数",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/kk_tts"
+    },
+    {
+      "name": "link_parser",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "B站/视频分享/网页链接统一解析：自动识别平台分发，支持 LLM 函数",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/link_parser"
+    },
+    {
+      "name": "llm_file_upload",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "给 LLM 一个发送文件的函数：按 URL 下载并发送图片/语音/视频/文件，同时提供 /发文件 命令",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/llm_file_upload"
+    },
+    {
+      "name": "llm_logger",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "记录每次 LLM 对话的次数/耗时/工具调用统计，提供 /对话日志 /对话统计 查询",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/llm_logger"
+    },
+    {
+      "name": "llm_plugin_gen",
+      "version": "1.7.0",
+      "author": "ZGRIC",
+      "description": "对话式 LLM 插件开发（AI 项目助手工作流 V1.0：澄清疑点→6 项待办确认→逐项广播→stop/continue 干预，全异步；支持检查/更新框架源码）",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/llm_plugin_gen"
+    },
+    {
+      "name": "markdown_killer",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "去除消息中的 Markdown 语法，提供纯文本；支持群内自动模式",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/markdown_killer"
+    },
+    {
+      "name": "member",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "群成员与发言数据中枢：消息流水记录、成员索引/查询、发言排行卡片图、成员 CSV 导出",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/member"
+    },
+    {
+      "name": "meme",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "调用 MemeGen 生成上下文字表情包图片",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/meme"
+    },
+    {
+      "name": "music",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "搜索歌曲并以音乐卡片返回可播放链接（Meting 公共接口）",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/music"
+    },
+    {
+      "name": "payqr",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "生成收款信息二维码（可配置收款方）",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/payqr"
+    },
+    {
+      "name": "picture_manager",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "保存/取出图片的本地图库（自动记录最近图片）",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/picture_manager"
+    },
+    {
+      "name": "pig",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "群内养猪小游戏：认领/投喂/遛弯/屠宰换金币，带全服排行榜",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/pig"
+    },
+    {
+      "name": "plugin_depgraph",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "扫描插件间依赖关系（DB 统一管理），/依赖 文本树 /依赖图 图片",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/plugin_depgraph"
+    },
+    {
+      "name": "poke",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "有人戳机器人时趣味回应，可开启反戳或自定义语料",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/poke"
+    },
+    {
+      "name": "qqadmin",
+      "version": "1.2.0",
+      "author": "ZGRIC",
+      "description": "QQ群管插件：禁言/踢人/全禁/精华/公告/宵禁/违禁词/进群管理/协管/群打卡/数据导出/事件监听/开关机",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/qqadmin"
+    },
+    {
+      "name": "qzone",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "以机器人账号发布/读取 QQ 空间说说（需配置 QZone Cookie）",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/qzone"
+    },
+    {
+      "name": "rail_query",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "按车次查询列车经停站、到发时间与历时",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/rail_query"
+    },
+    {
+      "name": "remote_admin",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "超级管理员私聊下发指令远程管理群/广播/查状态",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/remote_admin"
+    },
+    {
+      "name": "restart_manager",
+      "version": "1.0.1",
+      "author": "zgric",
+      "description": "超级管理员 /重启 原地重启框架，完成后回执内存占用",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/restart_manager"
+    },
+    {
+      "name": "send_like",
+      "version": "3.0.0",
+      "author": "ZGRIC",
+      "description": "点赞插件：普通用户0~8随机赞，超管每天固定10赞，支持自动点赞",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/send_like"
+    },
+    {
+      "name": "session_waiter",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "多轮会话基础设施：插件可等待用户下一条消息（wait_for_user）",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/session_waiter"
+    },
+    {
+      "name": "sysmon",
+      "version": "2.0.0",
+      "author": "ZGRIC",
+      "description": "运行监控套件：框架状态/系统资源/插件内存统计与诊断（/status /info /uptime /plugins /mem /memdiag），支持状态卡片图、仪表盘卡片与 WebUI 页面",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/sysmon"
+    },
+    {
+      "name": "weather",
+      "version": "1.0.0",
+      "author": "ZGRIC",
+      "description": "基于 wttr.in 的城市天气查询（当前+3天预报）",
+      "repo": "kuangxing6367/zcbot_plugins",
+      "branch": "main",
+      "sub_path": "plugins/weather"
+    }
+  ]
+}
