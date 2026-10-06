@@ -19,6 +19,7 @@ import re
 import shutil
 import tempfile
 import zipfile
+from urllib.parse import quote
 
 __plugin_meta__ = {
     "name": "个性化前端",
@@ -124,15 +125,23 @@ def _log(ctx_local, msg, level='info'):
 
 
 def _safe_template_name(name):
-    """只允许模板名：字母数字下划线连字符点"""
-    m = re.match(r'^([A-Za-z0-9_\-\.]+)$', name or '')
-    return m.group(1) if m else None
+    """模板名允许：中文、字母、数字、下划线、连字符、点、空格（禁止路径穿越）"""
+    if not name:
+        return None
+    s = name.strip()
+    if not s or '/' in s or '\\' in s or '..' in s:
+        return None
+    # 仅允许中文/字母数字/下划线/连字符/点/空格
+    if re.search(r'[^A-Za-z0-9_\-\.\u4e00-\u9fff ]', s):
+        return None
+    return s
 
 
 def _github_raw_candidates(path):
-    """生成 GitHub raw 候选下载地址（加速代理 → 直连）"""
+    """生成 GitHub raw 候选下载地址（加速代理 → 直连），路径含中文时正确编码"""
     base = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{GITHUB_BRANCH}"
-    direct = f"{base}/{path}"
+    safe = quote(path, safe='/')
+    direct = f"{base}/{safe}"
     cands = []
     for proxy in ("https://gh.jasonzeng.dev/https://", "https://ghproxy.net/https://"):
         cands.append(f"{proxy}{direct.lstrip('https://')}")
